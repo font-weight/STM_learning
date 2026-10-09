@@ -1,0 +1,333 @@
+# L08. ADC + TIM3 + DMA: поток с известным владельцем
+
+**Время:** около 4 часов, с контрольными точками каждые 60–90 минут.  
+**Результат:** номинально 1000 отсчётов/с PA0; DMA-кольцо из 200 отсчётов; сводка каждых 100; наблюдаемые потери при перегрузке.  
+**До начала:** [L07](07-adc-basics.md), UART, таймеры и правила коротких ISR.  
+**Оборудование:** та же схема 0–3,3 В. Желательно логический анализатор; PB0 можно использовать как диагностический выход.
+
+> Кольцевой DMA продолжает писать, даже когда `main` занят. `volatile`, флаг `ready` и запрет прерываний сами по себе его не останавливают. Ты должен знать, кто владеет каждой областью памяти и до какого момента.
+
+## 1. Цель и предсказание
+
+До кода нарисуй четыре прямоугольника: TIM3 → ADC1 → DMA buffer → обработка/UART. Подпиши частоту, размер и владельца каждой стрелки. Предскажи:
+
+- Как часто сработают half/full callbacks по отдельности и вместе?
+- Когда DMA снова начнёт перезаписывать готовую половину?
+- Сколько времени на обработку даёт половина из 100 отсчётов при 1 кГц?
+- Что произойдёт, если раз в цикл остановить `main` на 350 мс?
+
+Твой критерий — не «в терминале бегут числа», а сохранение определённой частоты и честный учёт потерь.
+
+## 2. Теория на 10 минут
+
+Таймер задаёт момент запуска. ADC выполняет преобразование. DMA переносит результат без копирования CPU. IRQ сообщает о границах блока. Обработка и передача работают отдельно.
+
+При одном rank один trigger даёт один отсчёт. При scan из двух rank один trigger запускает две последовательные конверсии; это не одновременная выборка двух каналов. DMA length считается в элементах выбранной ширины, а не в байтах. На F103C8 связка этой работы — ADC1 и DMA1 Channel 1. В RM0008 regular ADC1/2 допускает **TIM3 TRGO**, а произвольный TIMx TRGO выбрать нельзя. Смотри разделы ADC external trigger, ADC regular sequence и DMA channel mapping [RM0008](https://www.st.com/resource/en/reference_manual/rm0008-stm32f101xx-stm32f102xx-stm32f103xx-stm32f105xx-and-stm32f107xx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf).
+
+## 3. Точная конфигурация CubeMX
+
+Сохрани копию L07. Схема PA0 не меняется. Для этой работы явно измени USART1 и терминал с начальных 9600 на **115200 8N1**, без flow control; сначала проверь устойчивый обмен короткими строками. Если обмен нестабилен, проверь часы, уровни адаптера и фактическую скорость, не лечи это увеличением буфера. Базовые часы: HSI 8 МГц, PLL off; AHB/APB1/APB2 /1; PCLK1 и PCLK2 по 8 МГц, ADC /2 = 4 МГц. HSI задаёт номинальную частоту с допуском, не лабораторный эталон времени.
+
+### TIM3
+
+| Параметр | Значение |
+|---|---|
+| Clock source | Internal Clock |
+| Prescaler | 7 |
+| Counter mode | Up |
+| Counter period / ARR | 999 |
+| Clock division | DIV1 |
+| Auto-reload preload | Disable для этого опыта |
+| Trigger output / TRGO | Update event |
+| Master/slave mode | Disable |
+| TIM3 NVIC | не нужен; таймер запускает ADC аппаратно |
+
+Расчёт: `8 000 000 / ((7 + 1) × (999 + 1)) = 1000 Гц`. Здесь APB1 /1, поэтому TIM3 clock равен PCLK1. После смены APB-делителя пересчитать нужно именно timer clock, а не механически подставить PCLK1.
+
+### ADC1
+
+- PA0 / ADC1_IN0; Analog; rank 1 / channel 0
+- Sample time 55.5 cycles; alignment right
+- Number of conversions 1; scan disabled
+- Continuous **disabled**, discontinuous disabled
+- External trigger: Timer 3 Trigger Out event / `ADC_EXTERNALTRIGCONV_T3_TRGO`
+- В обычном HAL F1 нет поля `ExternalTrigConvEdge` в `ADC_InitTypeDef`; не добавляй его из примера для другой серии
+- Калибровка один раз до старта
+
+Continuous disabled принципиален: после первого trigger ADC не должен уйти в непрерывную свободную конверсию. При выбранном времени выборки преобразование около 17 мкс, заметно короче периода 1 мс.
+
+### DMA
+
+| Параметр | Значение |
+|---|---|
+| Request / channel | ADC1 / DMA1 Channel 1 |
+| Direction | Peripheral to memory |
+| Mode | Circular |
+| Peripheral increment | Disabled |
+| Memory increment | Enabled |
+| Peripheral / memory width | Half word / half word, 16 бит |
+| Priority | High |
+| DMA1 Channel1 global interrupt | Enabled; например preemption 1, subpriority 0 |
+
+Проверь код после генерации:
+
+1. `MX_DMA_Init()` вызывается **до** `MX_ADC1_Init()`; DMA clock включён до `HAL_DMA_Init()`.
+2. ADC MSP вызывает `__HAL_LINKDMA(hadc, DMA_Handle, hdma_adc1)`.
+3. `DMA1_Channel1_IRQHandler()` вызывает `HAL_DMA_IRQHandler(&hdma_adc1)`.
+4. В TIM3 master config стоит `TIM_TRGO_UPDATE`.
+5. В ADC стоят `NbrOfConversion = 1`, `ContinuousConvMode = DISABLE` и правильный trigger.
+6. Для read-only проверки регистров: ADC1 `SQR1.L=0` (одна конверсия), `SQR3.SQ1=0` (channel 0), `CR1.SCAN=0`, `CR2.CONT=0`; для TIM3 TRGO в regular ADC1/2 `EXTSEL=0b100` по RM0008 table 67, а после arming `EXTTRIG=1`. У TIM3 `CR2.MMS=0b010` соответствует Update. Не переписывай регистры вручную поверх HAL ради совпадения с таблицей: сначала исправь `.ioc` и пойми расхождение.
+
+Настройки и callbacks сверяй с [HAL ADC](https://github.com/STMicroelectronics/stm32f1xx-hal-driver/blob/master/Src/stm32f1xx_hal_adc.c) и [структурами HAL F1](https://github.com/STMicroelectronics/stm32f1xx-hal-driver/blob/master/Inc/stm32f1xx_hal_adc.h), а не с общей статьёй «STM32 DMA».
+
+## 4. Первый подход: доказать аппаратный темп
+
+1. Создай статический буфер `uint16_t adc_dma[200]` с выравниванием минимум 4 байта. Для GCC допустим `__attribute__((aligned(4)))`.
+2. Реализуй оба ADC callbacks; сначала только увеличивай отдельные счётчики half и full. Фильтруй `hadc->Instance == ADC1`.
+3. Счётчики наблюдай в `main`; печатай суммарно раз в секунду. Не ставь breakpoint внутри работающего потока для измерения времени: отладочная остановка меняет условия.
+4. Запусти ADC+DMA до запуска таймера. Инициализация TIM3 к этому моменту уже закончена. По ES096 §2.6.2 часы периферии-получателя включаются до появления trigger; не меняй делители часов на работающем потоке. Сначала останови TIM3 и ADC/DMA, затем перенастрой и запусти заново. [Errata ES096](https://www.st.com/resource/en/errata_sheet/es096-stm32f101x8b-stm32f102x8b-and-stm32f103x8b-mediumdensity-device-limitations-stmicroelectronics.pdf).
+
+Минимальный порядок в `USER CODE BEGIN 2`:
+
+```c
+if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK) {
+    Error_Handler();
+}
+__HAL_TIM_SET_COUNTER(&htim3, 0U);
+__HAL_TIM_CLEAR_FLAG(&htim3, TIM_FLAG_UPDATE);
+if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)(void *)adc_dma, 200U) != HAL_OK) {
+    Error_Handler();
+}
+if (HAL_TIM_Base_Start(&htim3) != HAL_OK) {
+    (void)HAL_ADC_Stop_DMA(&hadc1);
+    Error_Handler();
+}
+```
+
+`200U` — число halfword-элементов. Приведение к `uint32_t *` требуется историческим API HAL; оно не означает DMA word mode. Не используй локальный массив функции, которая вернётся до завершения DMA.
+
+**Контрольная точка:** суммарно около 10 callbacks/с, half около 5/с и full около 5/с. Для границы короткого измерительного окна возможна разница в один callback. Задержка `main` не должна менять аппаратную частоту. Сверь вывод с внешним временем или анализатором; SysTick и TIM3 от одного HSI не являются независимой проверкой его точности.
+
+## 5. Второй подход: владение памятью
+
+Для первой версии используй намеренно маленькую архитектуру:
+
+- DMA владеет кольцом из двух половин по 100 отсчётов
+- Callback копирует **завершённую** половину в отдельный mailbox
+- Пока mailbox занят, новый блок целиком отбрасывается, а счётчик увеличивается
+- `main` читает mailbox и освобождает его только после завершения чтения
+- UART получает уже собственные scalar-результаты; он никогда не читает живое DMA-кольцо
+
+Это политика **drop newest**. Она предсказуема, но не гарантирует отсутствие потерь. Отдельная очередь из нескольких блоков появится в L10.
+
+### Напиши контракт до реализации
+
+Для half callback безопасный источник — `adc_dma[0..99]`; до его повторного использования около 100 мс. Для full callback — `adc_dma[100..199]`, тоже около 100 мс. Это время включает **задержку входа в IRQ и работу копирования**, а не только тело функции.
+
+Счётчики раздели:
+
+- `dma_events`: число реально обслуженных callbacks
+- `mailbox_drops`: известные блоки, отвергнутые из-за занятого mailbox
+- `dma_deadline_faults`: обнаруженные нарушения безопасной фазы копирования
+- `adc_errors`: ошибки, переданные HAL
+
+`dma_events` работает как unsigned sequence с wrap; диагностические счётчики в примере насыщаются на UINT32_MAX. `dma_events` не доказывает, сколько аппаратных событий было за время запрещённых IRQ. Флаги DMA не являются бесконечной очередью. У F1 нет универсальной магической диагностики «все потерянные ADC samples»; сам проверяй временной бюджет.
+
+<details>
+<summary>Опорный фрагмент после своей схемы владения: mailbox с ограничениями</summary>
+
+Размести данные в `USER CODE BEGIN PV`, функции и callbacks в `USER CODE BEGIN 0`. Для GCC STM32Cube. Если callbacks уже есть, дополни их, не создавай вторую реализацию. Это ограниченный пример для одного producer ISR и одного consumer `main` на Cortex-M3, без RTOS.
+
+```c
+enum { ADC_HALF = 100, ADC_TOTAL = 2 * ADC_HALF };
+static uint16_t adc_dma[ADC_TOTAL] __attribute__((aligned(4)));
+static volatile uint16_t mailbox[ADC_HALF];
+static volatile uint32_t mailbox_ready;
+static volatile uint32_t mailbox_seq;
+static volatile uint32_t dma_events;
+static volatile uint32_t mailbox_drops;
+static volatile uint32_t dma_deadline_faults;
+static volatile uint32_t adc_errors;
+static volatile uint32_t capture_fault;
+
+static void saturating_increment(volatile uint32_t *counter)
+{
+    if (*counter != UINT32_MAX) {
+        ++(*counter);
+    }
+}
+
+/* CNDTR показывает текущую фазу DMA, а не историю пропущенных оборотов. */
+static int completed_half_is_idle(uint32_t half)
+{
+    uint32_t remaining = __HAL_DMA_GET_COUNTER(hadc1.DMA_Handle);
+    if (half == 0U) {
+        return remaining > 0U && remaining <= ADC_HALF;
+    }
+    return remaining > ADC_HALF && remaining <= ADC_TOTAL;
+}
+
+static void publish_half(uint32_t half)
+{
+    if (capture_fault != 0U) {
+        return;
+    }
+    uint32_t seq = ++dma_events;
+    if (!completed_half_is_idle(half)) {
+        saturating_increment(&dma_deadline_faults);
+        capture_fault = 1U;
+        return;
+    }
+    if (mailbox_ready != 0U) {
+        saturating_increment(&mailbox_drops);
+        return;
+    }
+
+    const volatile uint16_t *source = &adc_dma[half * ADC_HALF];
+    for (uint32_t i = 0U; i < ADC_HALF; ++i) {
+        mailbox[i] = source[i];
+    }
+    if (!completed_half_is_idle(half)) {
+        saturating_increment(&dma_deadline_faults);
+        capture_fault = 1U; /* потенциально смешанный блок не публикуется */
+        return;
+    }
+    mailbox_seq = seq;
+    __DMB();
+    mailbox_ready = 1U;
+}
+
+void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
+{
+    if (hadc->Instance == ADC1) {
+        publish_half(0U);
+    }
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
+{
+    if (hadc->Instance == ADC1) {
+        publish_half(1U);
+    }
+}
+
+void HAL_ADC_ErrorCallback(ADC_HandleTypeDef *hadc)
+{
+    if (hadc->Instance == ADC1) {
+        saturating_increment(&adc_errors);
+        capture_fault = 1U;
+    }
+}
+
+/* Вызывать только из main. IRQ не перезаписывает занятый mailbox. */
+static int take_mean(uint32_t *seq, uint32_t *mean)
+{
+    if (mailbox_ready == 0U) {
+        return 0;
+    }
+    __DMB();
+    uint32_t sum = 0U;
+    for (uint32_t i = 0U; i < ADC_HALF; ++i) {
+        sum += mailbox[i];
+    }
+    *seq = mailbox_seq;
+    *mean = sum / ADC_HALF;
+    __DMB();
+    mailbox_ready = 0U;
+    return 1;
+}
+```
+
+Добавь min/max сам. Перед разыменованием выходных указателей вызывающий код обязан передать действительные адреса. Сумма 100 × 4095 помещается в `uint32_t`.
+
+При `capture_fault != 0` главный цикл прекращает выдавать нормальные данные: сначала `HAL_TIM_Base_Stop(&htim3)`, затем `HAL_ADC_Stop_DMA(&hadc1)`, проверяет результаты, публикует аварийный статус. Не «лечи» неизвестную историю потока сбросом счётчика в работающем DMA.
+
+**Граница применимости:** две проверки CNDTR обнаруживают часть запозданий и пересечение ближайшей границы. Они не доказывают отсутствие полного оборота DMA между проверками. Пример требует измеренно короткого копирования и отсутствия ISR/critical section, блокирующих этот IRQ на 100 мс. `__DMB()` задаёт порядок доступа, но не останавливает DMA и не заменяет синхронизацию для RTOS/многоядерной системы.
+
+</details>
+
+Подними PB0 на входе в `publish_half`, опусти на каждом выходе; настрой его как обычный выход, без подключённой нагрузки. Анализатором измерь худшую длительность под нагрузкой. Учебная цель: копирование заметно короче 1 мс; обязательное требование: вся задержка от завершения блока до конца копирования меньше 100 мс с обоснованным запасом. Если анализатора нет, измерь длительность тела с DWT CYCCNT:
+
+```c
+/* Один раз в main, до запуска потока; CMSIS из проекта CubeF1. */
+CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+DWT->CYCCNT = 0U;
+DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
+/* В начале и конце исследуемого фрагмента: */
+uint32_t started_cycles = DWT->CYCCNT;
+/* ... ограниченное копирование ... */
+uint32_t elapsed_cycles = DWT->CYCCNT - started_cycles;
+```
+
+Сначала проверь, что счётчик действительно меняется. При HCLK 8 МГц 8000 циклов = номинально 1 мс. Храни максимальное значение в ISR, печатай из main. Если у функции несколько return, измерение должно охватить каждый интересующий выход. Регистры и маски смотри в [CMSIS Cortex-M3](https://github.com/ARM-software/CMSIS_5/blob/develop/CMSIS/Core/Include/core_cm3.h).
+
+Вычитание unsigned выдерживает один wrap при интервале меньше полного периода счётчика; при 8 МГц он около 537 с. Не измеряй так отладочные остановки/сон и не переноси коэффициент после смены HCLK. DWT продолжает считать при обычном маскировании IRQ, в отличие от накопления обслуженных SysTick; но это измерение тела **не измеряет задержку входа в IRQ**. Отсутствие внешней проверки этой задержки честно укажи. Не допускай длинного глобального запрета IRQ и не заявляй полной детекции потерянных оборотов DMA.
+
+## 6. UART: бюджет до форматирования
+
+Для 115200, 8N1 один байт занимает 10 бит: теоретический предел около 11 520 байт/с до накладных расходов приложения. Строка 80 байт × 10 Гц = 800 байт/с, около 7% линии. Строка 24 байта × 1000 Гц = 24 000 байт/с и не помещается.
+
+Публикуй одну строку на блок: sequence, min, max, mean, software drops и fault. В `main` контролируй длину `snprintf` и результат передачи. **У UART должен быть один владелец TX:** если используется `uart_console.c` из L04, после `uart_console_poll()` отправляй через `uart_console_tx_idle()` / `uart_console_reply()`, сохраняя pending-строку при отказе. Не добавляй второй прямой `HAL_UART_Transmit*` параллельно console IT TX. Успешный приём строки этим модулем не доказывает доставку на ПК.
+
+Только в отдельном варианте без активного console-передатчика допустим blocking `HAL_UART_Transmit`; timeout ограниченный, например 30 мс для строки до 100 байт. Ошибки передачи считай отдельно. Не вызывай блокирующий UART или `printf` из DMA IRQ. Полный контракт очереди/арбитража будет в L10.
+
+Потеря данных уже на USB-UART/ПК не равна переполнению mailbox. Для её обнаружения получателю нужен sequence. Отключение терминала не обязано тормозить передатчик без flow control.
+
+## 7. Намеренные неисправности и наблюдения
+
+### A. Медленный потребитель, DMA исправен
+
+Вставь `HAL_Delay(350)` в `main`, до обработки занятого mailbox. Через несколько секунд убери. IRQ не блокировать.
+
+Ожидается: ADC продолжает работать; `mailbox_drops` растёт; последовательность принятых блоков имеет пропуски; `dma_deadline_faults` и `adc_errors` должны остаться нулевыми. Не обещай точное число потерь по одному произвольному окну: оно зависит от границы задержки. Измерь его и объясни.
+
+### B. Continuous включён по ошибке
+
+В отдельной копии включи Continuous и заранее предскажи эффект. Callback rate резко перестанет соответствовать 10 Гц, поскольку после первого trigger идут непрерывные конверсии. Сразу останови опыт при fault. Восстанови `DISABLE` и докажи восстановление темпа.
+
+### C. DMA normal вместо circular
+
+В отдельной копии выбери Normal. Предскажи, почему придут только первые half/full события, затем исправь. Не используй это как «надёжную остановку ADC»: генератор trigger и ADC тоже нужно остановить.
+
+Не исследуй перегрузку отключением всех IRQ на секунды: это одновременно ломает SysTick/timeouts и делает причину неоднозначной.
+
+## 8. Типовые причины, по порядку проверки
+
+- **Нет callbacks:** timer running → TRGO Update → ADC trigger → ADC DMA enabled → DMA clock/link → NVIC → правильный IRQ handler
+- **Только один проход:** режим DMA Normal или остановленный таймер
+- **Слишком много callbacks:** Continuous включён; неверны timer clock, PSC или ARR
+- **В буфере «каждый второй» странный:** перепутана ширина DMA/тип массива или rank count
+- **Среднее иногда рвётся:** читается текущая половина, mailbox освобождён до конца чтения либо копирование пересекло дедлайн
+- **Debugger показывает чудеса:** остановленный CPU и работающая периферия меняют картину; повтори без остановок
+
+## 9. Gate: что сохранить
+
+В `evidence/L08.md`:
+
+1. Расчёт 1 кГц, `.ioc`, проверенные init и IRQ paths
+2. Лог не менее 60 с: число полученных блоков, sequence, потери и faults; без намеренной нагрузки счётчик mailbox drops нулевой
+3. Измерение длительности копирования и честное описание задержки IRQ/инструмента
+4. Лог с 350 мс задержкой: потери видны, приложение остаётся управляемым, после удаления задержки не растут
+5. Объяснение разницы software drop, DMA overwrite/deadline fault и потери UART/ПК
+6. Рисунок владения для обеих половин и mailbox
+
+Все аппаратные критерии в этом курсе должен выполнить ты. Редакционная проверка текста/host-тест не подтверждает работу DMA на конкретной Blue Pill.
+
+## 10. Воспроизведение и перенос без AI
+
+В чистой копии проекта восстанови 1-channel TIM3-triggered DMA, два callbacks и 10 Гц сводки, глядя только в документацию. Объясни, почему в буфер передаётся 200, а не 400.
+
+**Перенос:** спроектируй два канала PA0 и PB1/ADC1_IN9. Включи Scan, `NbrOfConversion=2`, rank 1 channel 0 и rank 2 channel 9, оба с заданным sample time, Continuous/Discontinuous disabled. При 1 кГц trigger получается 1000 последовательностей/с и 2000 значений/с. Для половины из 100 **последовательностей** нужен буфер `2 × 100 × 2 = 400` halfword-значений. Каждая половина должна содержать целые последовательности. Сначала рассчитай время двух конверсий и нарисуй порядок `[ch0, ch9, ch0, ch9, …]`, только затем меняй проект. PB1 подключать лишь к проверенному источнику 0–3,3 В.
+
+AI-подсказка:
+
+> Вот мои `.ioc` параметры, схема владения и лог sequence/drop. Не давай полный код. Проверь одну конкретную гипотезу: почему темп отличается от расчётного? Сначала запроси недостающее наблюдение, затем предложи минимальный эксперимент. Учитывай STM32F103 и HAL F1.
+
+AI-review после своей реализации:
+
+> Найди гонки DMA/ISR/main, неверное время жизни буфера, раннее освобождение и скрытые блокировки. Для каждой проблемы покажи конкретное interleaving и тест. Отдельно перечисли то, чего счётчики не доказывают.
+
+**Далее:** [L09 — SPI и I2C](09-i2c-peripheral.md), затем [L10 — буферы, протокол и хранение](10-buffering-storage.md).
+
+[Источники и границы редакционной проверки](../reference/ADC_DMA_BUSES.md).
