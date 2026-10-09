@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Практический маршрут по STM32F103: от отладки Blue Pill до своего измерителя. Весь учебный текст доступен офлайн.">
+  <meta name="referrer" content="no-referrer">
+  <title>STM32F103 на практике</title>
+  <style>/* SITE_CSS */</style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Перейти к материалу</a>
+  <header class="app-header">
+    <a class="brand" href="#home" aria-label="STM32-практикум, главная"><span class="brand-symbol" aria-hidden="true">s<span>32</span></span><span>практикум<span class="brand-subtitle">STM32F103 · Blue Pill</span></span></a>
+    <div class="header-actions"><span class="offline-label"><span aria-hidden="true"></span>Можно офлайн</span><button class="icon-button theme-toggle" type="button" aria-label="Переключить тему" title="Переключить тему"><span aria-hidden="true">◐</span></button><button class="button button-small button-plain progress-open" type="button">Мой прогресс</button><button id="menu-toggle" class="icon-button menu-toggle" type="button" aria-expanded="false" aria-controls="sidebar" aria-label="Открыть навигацию"><span aria-hidden="true">☰</span></button></div>
+  </header>
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar" aria-label="Навигация по курсу">
+      <a href="#home" class="overview-link"><span aria-hidden="true">▦</span> Карта маршрута</a>
+      <div class="sidebar-progress"><div><span>Основной маршрут</span><strong id="sidebar-count">0 / 14</strong></div><progress id="sidebar-progress" value="0" max="14" aria-label="Выполнено модулей основного маршрута"></progress><p>Отметки вашей практики</p></div>
+      <nav aria-label="Модули"><p class="nav-caption">Лаборатории</p><ol id="module-nav" class="module-nav"></ol></nav>
+      <nav aria-label="Материалы курса"><p class="nav-caption">Под рукой</p><div id="resource-nav" class="resource-nav"></div></nav>
+      <div class="sidebar-note"><span aria-hidden="true">↗</span><p>Не просто прочитать.<br>Собрать, проверить, повторить.</p></div>
+    </aside>
+    <div class="main-wrap">
+      <div id="storage-warning" class="storage-warning" role="status" hidden></div>
+      <main id="main" tabindex="-1"></main>
+      <footer class="page-footer"><span>STM32F103 · практика на своей плате</span><span>Без аккаунта и сетевых запросов<span id="build-id"></span></span></footer>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+  <dialog id="progress-dialog" aria-labelledby="progress-title">
+    <div class="dialog-heading"><h2 id="progress-title">Ваш прогресс</h2><button class="icon-button dialog-close" type="button" aria-label="Закрыть окно прогресса">×</button></div>
+    <p>Отметки хранятся только в этом браузере. При открытии файла локально сохранение зависит от браузера и расположения файла. Экспортируйте копию перед переносом или очисткой данных.</p>
+    <p id="dialog-storage-warning" class="storage-warning" hidden></p>
+    <button id="recover-progress" class="button button-secondary" type="button" hidden>Скачать исходные данные</button>
+    <div id="dialog-stats" class="dialog-stats"></div>
+    <div class="dialog-actions"><button id="export-progress" class="button button-primary" type="button">Экспорт JSON <span aria-hidden="true">↓</span></button><button id="choose-import" class="button button-secondary" type="button">Импорт JSON <span aria-hidden="true">↑</span></button><input id="import-file" type="file" accept=".json,application/json" hidden></div>
+    <p class="small-text">Импорт заменяет текущие отметки после подтверждения. Совместим только экспорт этого курса, версия 1. Ваши данные никуда не отправляются.</p>
+    <div id="import-status" class="import-status" role="status" aria-live="polite"></div>
+    <div class="reset-row"><div><strong>Начать заново</strong><p class="small-text">Удалить отметки и план повторений.</p></div><button id="reset-progress" class="button button-danger" type="button">Сбросить</button></div>
+  </dialog>
+  <noscript><div class="noscript"><h1>Материалы доступны без JavaScript</h1><p>Для интерактивного читателя нужен JavaScript. Все исходные уроки находятся в папке docs/labs, а маршрут начинается в <a href="docs/START_HERE.md">docs/START_HERE.md</a>.</p></div></noscript>
+  <script id="course-data" type="application/json">COURSE_DATA_JSON</script>
+  <script>/* SITE_STATE */</script>
+  <script>/* SITE_APP */</script>
+</body>
+</html>
