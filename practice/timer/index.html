@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Необязательная офлайн-сверка собственного расчёта PSC/ARR для STM32F103C8. Два фиксированных профиля курса, без настройки платы и автоматического зачёта.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; connect-src 'none'">
+  <title>Сначала прогноз · Таймер STM32F103C8</title>
+  <style>
+    :root{color-scheme:light;--paper:#f4f3ed;--ink:#1c3437;--muted:#526768;--line:#cbd5cf;--accent:#155e58;--soft:#e7f0e9;--warn:#785223}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+    main{max-width:960px;margin:0 auto;padding:38px 24px 60px}header{max-width:770px;margin-bottom:28px}.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:750;color:var(--accent)}
+    h1{font-size:clamp(30px,5vw,48px);line-height:1.12;letter-spacing:-.04em;margin:12px 0 18px}h2{font-size:23px;line-height:1.3;margin:0 0 18px}h3{font-size:18px;margin:0 0 8px}p{margin:10px 0}a{color:var(--accent);text-underline-offset:3px}small,.note{font-size:14px;color:var(--muted)}
+    .intro{font-size:19px}.panel{background:#fff;border:1px solid var(--line);border-radius:18px;padding:24px;margin:18px 0}.step{display:inline-grid;place-items:center;width:29px;height:29px;border-radius:50%;background:var(--soft);color:var(--accent);font-size:16px;margin-right:7px;vertical-align:2px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px 24px}.wide{grid-column:1/-1}label{font-weight:650;display:block;margin-bottom:6px}input,select,button{font:inherit}input,select{width:100%;min-height:48px;background:#fff;color:var(--ink);border:1px solid #809997;border-radius:8px;padding:10px 12px}input::placeholder{color:#647a7b}
+    input[aria-invalid="true"],select[aria-invalid="true"]{border:2px solid #9a3828}input:disabled{background:#edf0ed}button{border:1px solid var(--accent);border-radius:9px;min-height:48px;padding:10px 18px;cursor:pointer;font-weight:700;background:var(--accent);color:#fff}button.secondary{background:#fff;color:var(--accent)}:focus-visible{outline:3px solid #ba7825;outline-offset:4px}
+    .actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px}.context{background:var(--soft);padding:15px 18px;border-radius:10px;font-size:15px;margin:18px 0}.context p{margin:5px 0}.error{color:#963420;font-weight:650}.math{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere;line-height:1.65;font-size:15px}
+    #result{border:2px solid var(--accent);scroll-margin-top:20px}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0}.metric{background:var(--paper);padding:16px;border-radius:10px}.metric dt{font-size:14px;color:var(--muted)}.metric dd{font-size:24px;font-weight:750;line-height:1.4;margin:7px 0;overflow-wrap:anywhere}.metric dd p{font-size:14px;font-weight:400;line-height:1.6}.notice{border-left:3px solid var(--warn);padding-left:14px;font-size:15px}
+    details{border-top:1px solid var(--line);padding:16px 0}summary{cursor:pointer;font-weight:650}ul{padding-left:24px}li{margin:7px 0}footer{font-size:14px;color:var(--muted);margin-top:30px}footer p{max-width:800px}[hidden]{display:none!important}
+    .course-nav{display:flex;flex-wrap:wrap;gap:6px 24px;margin-bottom:18px;font-size:15px}.course-nav a{display:inline-flex;align-items:center;min-height:44px;max-width:100%;overflow-wrap:anywhere}
+    @media(max-width:600px){body{font-size:16px}main{padding:24px 16px 40px}.panel{padding:20px 16px}.grid,.metrics{grid-template-columns:1fr;gap:16px}.intro{font-size:17px}h2{font-size:21px}.actions button{width:100%}.metric dd{font-size:23px}}
+  </style>
+</head>
+<body>
+<main>
+  <nav class="course-nav" aria-label="Возврат к курсу">
+    <a href="../../index.html#module/L05">Вернуться к L05: аппаратный PWM</a>
+    <a href="../../index.html#section/document/docs/TOOLCHAIN.md/clocks">Договор о частотах курса</a>
+  </nav>
+  <header>
+    <div class="eyebrow">STM32F103C8 · необязательная практика</div>
+    <h1>Сначала прогноз.<br>Потом расчёт.</h1>
+    <p class="intro">Выбери профиль курса, сам запиши PSC, ARR и ожидаемые частоты. Затем сверь арифметику. Это тренировка перед измерением на плате.</p>
+    <p class="note">Необязательное упражнение: его можно пропустить, оно не добавляет обязательных часов, оборудования или критериев зачёта.</p>
+    <p class="note">Один файл, работает без сети. Ничего не настраивает, не сохраняет ответы и не отмечает лабораторные как пройденные.</p>
+  </header>
+  <noscript><p class="panel">Для расчёта включи JavaScript. Формулы и ограничения ниже доступны без него.</p></noscript>
+  <form id="practice" novalidate>
+    <section class="panel" aria-labelledby="setup-heading">
+      <h2 id="setup-heading"><span class="step">1</span>Задай условия</h2>
+      <div class="grid">
+        <div><label for="profile">Профиль тактирования</label><select id="profile" name="profile"><option value="hsi8">Основной: HSI 8 МГц</option><option value="hse72">Факультатив: HSE 8 МГц → PLL ×9</option></select></div>
+        <div><label for="timer">Таймер</label><select id="timer" name="timer"><option value="TIM2">TIM2 · APB1</option><option value="TIM3">TIM3 · APB1</option><option value="TIM1">TIM1 · APB2</option></select></div>
+      </div>
+      <div class="context" id="profile-context" aria-live="polite"></div>
+      <p class="notice" id="hse-notice" hidden>72 МГц здесь — только расчёт для проверенного внешнего источника HSE 8 МГц. Выбор в этой форме не переключает плату. Сначала подтверди источник и настройки по договору курса; HSI ×9 не является этим профилем.</p>
+      <div class="grid">
+        <div><label for="psc">Мой PSC</label><input id="psc" name="psc" type="text" inputmode="numeric" autocomplete="off" maxlength="5" aria-describedby="register-help" placeholder="Значение регистра" required></div>
+        <div><label for="arr">Мой ARR</label><input id="arr" name="arr" type="text" inputmode="numeric" autocomplete="off" maxlength="5" aria-describedby="register-help" placeholder="Значение регистра" required></div>
+      </div>
+      <p class="note" id="register-help">Оба регистра 16-битные: целые 0…65535. PSC хранит делитель минус 1. У ARR=0 особый случай: счётчик блокирован.</p>
+      <p class="note">Модель: Internal Clock, непрерывный счёт вверх, edge-aligned, CEN=1, UDIS=0, PSC/ARR уже применены. Для TIM1: RCR=0. Без внешних триггеров, дополнительных UG, пауз и изменения регистров на ходу.</p>
+    </section>
+    <section class="panel" aria-labelledby="predict-heading">
+      <h2 id="predict-heading"><span class="step">2</span>Запиши свой прогноз</h2>
+      <p class="note">Все частоты вводи в Гц; десятичный разделитель — точка или запятая. Автоподбора PSC/ARR здесь нет.</p>
+      <div class="grid">
+        <div><label for="pred-timer">На входе таймера: f_TIM, Гц</label><input id="pred-timer" name="predTimer" type="text" inputmode="decimal" autocomplete="off" maxlength="32" required></div>
+        <div><label for="pred-counter">После PSC: f_counter, Гц</label><input id="pred-counter" name="predCounter" type="text" inputmode="decimal" autocomplete="off" maxlength="32" required></div>
+        <div><label for="pred-state">Периодические update-события</label><select id="pred-state" name="predState" required><option value="">Мой прогноз…</option><option value="periodic">Есть, с частотой ниже</option><option value="blocked">Нет: счётчик блокирован</option></select></div>
+        <div><label for="pred-update">Мой f_update, Гц</label><input id="pred-update" name="predUpdate" type="text" inputmode="decimal" autocomplete="off" maxlength="32" aria-describedby="update-help" disabled><div class="note" id="update-help">Нужен при прогнозе периодических событий.</div></div>
+      </div>
+      <div class="actions"><button type="submit">Сверить мой расчёт</button><button type="button" id="clear" class="secondary">Очистить попытку</button></div>
+      <p id="error" class="error" role="alert" hidden></p>
+      <p class="note">Если меняешь условия, прогноз нужно ввести заново. Изменение прогноза скрывает предыдущую сверку. Для задания «по памяти» закрой этот помощник.</p>
+    </section>
+  </form>
+  <section id="result" class="panel" aria-labelledby="result-heading" hidden>
+    <h2 id="result-heading" tabindex="-1">Сверка с идеальным номиналом</h2>
+    <p id="clock-chain" class="math"></p>
+    <p id="register-chain" class="math"></p>
+    <dl class="metrics">
+      <div class="metric"><dt>f_TIM · вход таймера до PSC</dt><dd><span id="value-timer"></span><p id="comparison-timer"></p></dd></div>
+      <div class="metric"><dt>f_counter · такты CK_CNT после PSC</dt><dd><span id="value-counter"></span><p id="comparison-counter"></p></dd></div>
+      <div class="metric"><dt>f_update · периодические UEV</dt><dd><span id="value-update"></span><p id="comparison-update"></p></dd></div>
+      <div class="metric"><dt>f_PWM · частота повторения edge-aligned PWM</dt><dd><span id="value-pwm"></span><p id="period-pwm"></p></dd></div>
+    </dl>
+    <p id="zero-notice" class="notice" hidden>ARR=0: RM0008 указывает, что счётчик блокирован. Подстановка ARR+1=1 в обычную формулу не даёт действительную частоту повторения. Отдельное update-событие по UG не рассматривается этой моделью.</p>
+    <p id="pwm-notice" class="notice">f_PWM совпадает с f_update только в указанной модели. Повторяющиеся фронты предполагают запущенный и разрешённый выход PWM mode 1, active high, 1 ≤ CCR ≤ ARR. При 0% или 100% уровень постоянный; частоту по фронтам не измерить. CCR и настройка вывода здесь не проверяются.</p>
+    <p class="note">Результат — арифметика заданного номинального clock tree. Он не доказывает конфигурацию платы, точность генератора, частоту callback или успешное выполнение задания.</p>
+    <p><strong>Следующий шаг:</strong> объясни расхождение прогноза, затем сравни с реальными регистрами и независимым измерением. Если прибора нет, запиши «частота не измерена».</p>
+  </section>
+  <section aria-label="Подсказка и границы">
+    <details>
+      <summary>Подсказка: четыре разные частоты</summary>
+      <p>TIM2/TIM3 питаются от домена APB1, TIM1 — от APB2. Частота ядра сама по себе ещё не является частотой таймера.</p>
+      <p class="math">PCLK = HCLK / делитель APB<br>f_TIM = PCLK при APB /1; иначе 2 × PCLK<br>f_counter = f_TIM / (PSC + 1)<br>f_update = f_counter / (ARR + 1), если ARR ≥ 1<br>f_PWM = f_update в описанном edge-aligned режиме</p>
+      <p>PSC=0 даёт делитель 1. При ARR≥1 счёт идёт от 0 до ARR включительно: в периоде ARR+1 тактов. Для PSC=65535 делитель равен 65536; для ARR=65535 в периоде 65536 тактов.</p>
+      <p>Частота повторения PWM — от фронта одного направления до следующего такого же. Это не сумма всех восходящих и нисходящих фронтов. Если программа переключает GPIO один раз на update, полному циклу нужны два переключения; задержки и пропуски обработки требуют отдельной проверки.</p>
+    </details>
+    <details>
+      <summary>Границы модели и связь с курсом</summary>
+      <ul>
+        <li>Только STM32F103C8, TIM1/TIM2/TIM3, два фиксированных профиля курса. Не переносить разрядность TIM2 на другие STM32.</li>
+        <li>Только установившийся счёт вверх с внутренними часами. Center-aligned, one-pulse, slave/reset/gated modes, RCR≠0 и переходные процессы preload не рассчитываются.</li>
+        <li>L03 посвящена SysTick и программному времени: этот расчёт TIM не проверяет rollover или scheduler. L05 использует TIM2 PWM. Частота запуска ADC, ADCCLK и время преобразования L07 — другие величины; калькулятора ADC здесь нет.</li>
+        <li>Помощник не генерирует код, не меняет .ioc, не подключается к плате или сервисам, не сохраняет прогресс. Самооценка и аппаратные доказательства остаются за тобой.</li>
+        <li>Если проверяешь PWM на плате, используй только безопасный учебный стенд 3,3 В и совместимый вход прибора с общей землёй. Переставляй провода при выключенном питании; никаких силовых нагрузок.</li>
+      </ul>
+    </details>
+  </section>
+  <footer>
+    <p>Основа: <a href="https://www.st.com/resource/en/reference_manual/rm0008-stm32f101xx-stm32f102xx-stm32f103xx-stm32f105xx-and-stm32f107xx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf" target="_blank" rel="noopener noreferrer">ST RM0008, Rev 21 (February 2021)</a>: §7.2, рис. 8 и стр. 94 (APB); §§14.3.1–14.3.2, 14.3.10, 14.4.11–14.4.13 (TIM1); §§15.3.1–15.3.2, 15.3.9, 15.4.11–15.4.12 (TIM2/TIM3). Сверено 09.10.2026.</p>
+    <p>Внешняя ссылка на документацию требует сети; сам помощник — нет.</p>
+    <p><a href="../../index.html#module/L05">Вернуться к материалу L05</a>. Для офлайн-переходов храните эту страницу вместе с распакованной папкой курса. Для задания «по памяти» закройте помощник; сверка здесь не заменяет самостоятельный расчёт и измерение.</p>
+  </footer>
+</main>
+<script id="timer-core">
+"use strict";
+const TimerMath = (() => {
+  const profiles = Object.freeze({
+    hsi8: Object.freeze({label:"HSI 8 МГц; PLL выключен",sysclkHz:8000000,hclkHz:8000000,apb1Div:1,apb2Div:1}),
+    hse72: Object.freeze({label:"Проверенный HSE 8 МГц /1 × PLL9",sysclkHz:72000000,hclkHz:72000000,apb1Div:2,apb2Div:1})
+  });
+  const buses = Object.freeze({TIM1:"APB2",TIM2:"APB1",TIM3:"APB1"});
+  function clock(profileId,timer) {
+    if (!Object.hasOwn(profiles,profileId) || !Object.hasOwn(buses,timer)) throw new RangeError("Неизвестный профиль или таймер.");
+    const profile=profiles[profileId],bus=buses[timer];
+    const apbDiv=bus==="APB1"?profile.apb1Div:profile.apb2Div;
+    const pclkHz=profile.hclkHz/apbDiv,multiplier=apbDiv===1?1:2;
+    return Object.freeze({profileId,timer,...profile,bus,apbDiv,pclkHz,multiplier,timerHz:pclkHz*multiplier});
+  }
+  function parseRegister(raw) {
+    if (typeof raw!=="string" || !/^\d{1,5}$/.test(raw.trim())) throw new RangeError("Нужно целое число от 0 до 65535 без знака и дробной части.");
+    const value=Number(raw.trim());
+    if (value>65535) throw new RangeError("Значение регистра должно быть от 0 до 65535.");
+    return value;
+  }
+  function parseFrequency(raw) {
+    if (typeof raw!=="string" || !/^\d+(?:[.,]\d+)?$/.test(raw.trim())) throw new RangeError("Введи положительную частоту в Гц, например 1000 или 888,889.");
+    const value=Number(raw.trim().replace(",","."));
+    if (!Number.isFinite(value) || value<=0) throw new RangeError("Частота должна быть конечным числом больше нуля.");
+    return value;
+  }
+  function calculate(profileId,timer,psc,arr) {
+    for (const value of [psc,arr]) {
+      if (!Number.isInteger(value) || value<0 || value>65535) throw new RangeError("PSC и ARR должны быть 16-битными целыми 0…65535.");
+    }
+    const c=clock(profileId,timer),prescalerDiv=psc+1,periodCounts=arr+1;
+    const counterHz=c.timerHz/prescalerDiv;
+    const blocked=arr===0;
+    // RM0008 explicitly blocks the counter at ARR=0. Do not apply the periodic formula there.
+    const updateHz=blocked?null:c.timerHz/(prescalerDiv*periodCounts);
+    return Object.freeze({...c,psc,arr,prescalerDiv,periodCounts,counterHz,blocked,updateHz,pwmHz:updateHz,periodSeconds:blocked?null:(prescalerDiv*periodCounts)/c.timerHz});
+  }
+  return Object.freeze({profiles,clock,parseRegister,parseFrequency,calculate});
+})();
+</script>
+<script id="timer-ui">
+"use strict";
+(() => {
+  const $=id=>document.getElementById(id),form=$("practice"),result=$("result"),error=$("error");
+  const configIds=["profile","timer","psc","arr"],predictionIds=["pred-timer","pred-counter","pred-state","pred-update"];
+  const fmt=value=>new Intl.NumberFormat("ru-RU",{maximumSignificantDigits:10}).format(value);
+  function hideResult(){result.hidden=true;error.hidden=true;for(const input of form.querySelectorAll('[aria-invalid="true"]'))input.removeAttribute("aria-invalid");}
+  function syncPrediction(){const periodic=$("pred-state").value==="periodic";$("pred-update").disabled=!periodic;$("pred-update").required=periodic;if(!periodic)$("pred-update").value="";}
+  function clearPrediction(){for(const id of predictionIds)$(id).value="";syncPrediction();hideResult();}
+  function showContext(){
+    const c=TimerMath.clock($("profile").value,$("timer").value);
+    $("profile-context").textContent=`${c.label}. SYSCLK = ${fmt(c.sysclkHz)} Гц; AHB /1, HCLK = ${fmt(c.hclkHz)} Гц. APB1 /${c.apb1Div}; APB2 /${c.apb2Div}. Выбран ${c.timer} на ${c.bus}.`;
+    $("hse-notice").hidden=c.profileId!=="hse72";
+  }
+  for(const id of configIds)$(id).addEventListener("input",()=>{clearPrediction();showContext();});
+  for(const id of predictionIds)$(id).addEventListener("input",()=>{hideResult();syncPrediction();});
+  $("clear").addEventListener("click",()=>{$("psc").value="";$("arr").value="";clearPrediction();$("psc").focus();});
+  function read(id,parser){try{return parser($(id).value);}catch(e){$(id).setAttribute("aria-invalid","true");$(id).focus();throw new Error(`${document.querySelector(`label[for="${id}"]`).textContent}: ${e.message}`);}}
+  function comparison(predicted,actual){const relative=(predicted/actual-1)*100;const difference=Number.isFinite(relative)?`${relative>0?"+":""}${fmt(relative)}%`:"вне диапазона отображения";return `Твой прогноз: ${fmt(predicted)} Гц. Разница с номиналом: ${difference}.`;}
+  form.addEventListener("submit",event=>{
+    event.preventDefault();hideResult();
+    try{
+      const psc=read("psc",TimerMath.parseRegister),arr=read("arr",TimerMath.parseRegister);
+      const predTimer=read("pred-timer",TimerMath.parseFrequency),predCounter=read("pred-counter",TimerMath.parseFrequency);
+      const state=read("pred-state",value=>{if(!["periodic","blocked"].includes(value))throw new Error("Сначала выбери собственный прогноз.");return value;});
+      const predUpdate=state==="periodic"?read("pred-update",TimerMath.parseFrequency):null;
+      const r=TimerMath.calculate($("profile").value,$("timer").value,psc,arr);
+      $("clock-chain").textContent=`${r.label}; SYSCLK = HCLK = ${fmt(r.hclkHz)} Гц (AHB /1). ${r.timer} ← ${r.bus}: PCLK = ${fmt(r.hclkHz)} / ${r.apbDiv} = ${fmt(r.pclkHz)} Гц; f_TIM = ${fmt(r.pclkHz)} × ${r.multiplier} = ${fmt(r.timerHz)} Гц. ${r.multiplier===2?"APB /2 включает удвоение timer clock.":"APB /1: удвоения timer clock нет."}`;
+      $("register-chain").textContent=`PSC = ${psc}; PSC + 1 = ${r.prescalerDiv}. ARR = ${arr}; ARR + 1 = ${r.periodCounts}. `+(r.blocked?"При ARR=0 периодическая формула неприменима.":`f_update = ${fmt(r.timerHz)} / (${r.prescalerDiv} × ${r.periodCounts}) Гц.`)+(r.timer==="TIM1"?" Для TIM1 принято RCR=0.":"");
+      $("value-timer").textContent=`${fmt(r.timerHz)} Гц`;
+      $("value-counter").textContent=`${fmt(r.counterHz)} Гц`;
+      $("comparison-timer").textContent=comparison(predTimer,r.timerHz);
+      $("comparison-counter").textContent=comparison(predCounter,r.counterHz)+(r.blocked?" Это частота после PSC; счётчик при ARR=0 не считает.":"");
+      $("value-update").textContent=r.blocked?"Нет периодических UEV":`${fmt(r.updateHz)} Гц`;
+      $("comparison-update").textContent=r.blocked?(state==="blocked"?"Ты предсказал блокировку счётчика.":`Твой прогноз ${fmt(predUpdate)} Гц предполагает счёт; при ARR=0 он блокирован.`):(state==="blocked"?"Ты предсказал блокировку. При этих ARR и условиях модели счёт периодический.":comparison(predUpdate,r.updateHz));
+      $("value-pwm").textContent=r.blocked?"Нет повторения":`${fmt(r.pwmHz)} Гц`;
+      $("period-pwm").textContent=r.blocked?"Период не определён.":`Период = ${fmt(r.periodSeconds)} с. Условия появления фронтов — ниже.`;
+      $("zero-notice").hidden=!r.blocked;$("pwm-notice").hidden=r.blocked;
+      result.hidden=false;$("result-heading").focus();
+    }catch(e){error.textContent=e.message;error.hidden=false;}
+  });
+  // Form restoration by a browser is not a saved or verified attempt.
+  form.reset();syncPrediction();showContext();
+})();
+</script>
+</body>
+</html>

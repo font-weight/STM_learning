@@ -1,6 +1,6 @@
 {
-  "frozen_at": "2026-10-09T12:53:00Z",
-  "payload_files": 82,
+  "frozen_at": "2026-10-09T18:44:15Z",
+  "payload_files": 88,
   "files": [
     {
       "path": ".gitignore",
@@ -9,18 +9,18 @@
     },
     {
       "path": "CHANGELOG.md",
-      "bytes": 3690,
-      "sha256": "d629ea9bedfbb4178c6dd68faaa505a3c29144d6a0ea9e55ccdfc127f232752e"
+      "bytes": 4445,
+      "sha256": "146eb6176a3f4bd7068514fdb56abd90e516569e68cf9b71ae9ace579364e131"
     },
     {
       "path": "README.md",
-      "bytes": 5982,
-      "sha256": "1e2d3bff197df7f9fd51899f1b8a6c3152c05ebefd34f7854ab1d717ff0f0d35"
+      "bytes": 6191,
+      "sha256": "5a9526e0b762b385abd22ef2dd237610de86226241e1f2b33e8a73279888ffa6"
     },
     {
       "path": "VALIDATION.md",
-      "bytes": 7710,
-      "sha256": "4dc9abfaba6523278e0ba74095373e99e6112dbff007798af43c7e4a97d535fb"
+      "bytes": 8307,
+      "sha256": "a6973214bd27852b9925eb3cb65a5ec473ce37cb629ffce55904ceb5bb8c1e92"
     },
     {
       "path": "course-schema.json",
@@ -69,8 +69,8 @@
     },
     {
       "path": "docs/TOOLCHAIN.md",
-      "bytes": 38213,
-      "sha256": "00d107b6631bfb1cbad06f5fcb9958aef4b4cfa9bf725ac74095ed65b3375f54"
+      "bytes": 39432,
+      "sha256": "0398a1741b7b0a7c2e0889d38194928e3bb110c89d7e66fd0334a1e61411bc07"
     },
     {
       "path": "docs/assets/diagrams/adc-dma-mailbox-ownership.svg",
@@ -114,8 +114,8 @@
     },
     {
       "path": "docs/labs/05-pwm.md",
-      "bytes": 13188,
-      "sha256": "247b9347c11645a52f523b73bb8f19e288c385c33956da35ee20eeea3a49ab23"
+      "bytes": 14479,
+      "sha256": "41f1ad2f24922cf44cd8ea9c11f956d8fef6133e4f9878d39fe3079267ca2a93"
     },
     {
       "path": "docs/labs/06-input-capture.md",
@@ -279,8 +279,33 @@
     },
     {
       "path": "index.html",
-      "bytes": 1822289,
-      "sha256": "c60bd15d47ca584852ad77fc5ecbeb2c8c59df784b18360bc248c8af16708d20"
+      "bytes": 1831916,
+      "sha256": "da32bf492183956585783d251005a136f236d91ee8e3846ac1bccfd513c65862"
+    },
+    {
+      "path": "practice/timer/README.md",
+      "bytes": 5357,
+      "sha256": "4f3f8f4b19145b06f44e161ada016395b62f6e31e050178be31a730085154afd"
+    },
+    {
+      "path": "practice/timer/index.html",
+      "bytes": 24128,
+      "sha256": "169dd866784e3c1902e7ba1ab2ae6bd021be9167c98c3e78d136b45d9c261fc0"
+    },
+    {
+      "path": "practice/timer/tests/boundaries.test.cjs",
+      "bytes": 9755,
+      "sha256": "93133d02e727bd9d75e6bfd737240e208d3703eca599e0c1e1f2c154c913eca3"
+    },
+    {
+      "path": "practice/timer/tests/timer.test.cjs",
+      "bytes": 7555,
+      "sha256": "03d91a45ac3eec9e6ab603be39bd27ecdd159c1a95f2e1a515e0a91c36a0b0ad"
+    },
+    {
+      "path": "practice/timer/tests/ui.test.cjs",
+      "bytes": 8992,
+      "sha256": "120e1254118dbe03a47a7163cb1d4398fd1bd786b93b99a32a7be81cae9147ef"
     },
     {
       "path": "references/digital-primary-sources.md",
@@ -294,8 +319,8 @@
     },
     {
       "path": "scripts/check_all.sh",
-      "bytes": 800,
-      "sha256": "2b50fb95b37955196fd203626ddeb15f6d625a5f5e156b6c5d5a7951365a9f64"
+      "bytes": 965,
+      "sha256": "d35f579e727fab2f809d1473a89faac03db6c10db489a1edac8232e21ec0ce05"
     },
     {
       "path": "scripts/check_course.py",
@@ -386,6 +411,11 @@
       "path": "tests/test_stm32_project_checker.py",
       "bytes": 15998,
       "sha256": "b85c568d91b8151f1a367f17fbd9823039e20efbde224091fd7cbebdaa6e5c5f"
+    },
+    {
+      "path": "tests/test_timer_integration.py",
+      "bytes": 8146,
+      "sha256": "cb83b356e9df463866111d11ea7f6e1da4a817a59b355a8d088e17b94496f0d0"
     },
     {
       "path": "tests/test_uart_console_mock.c",

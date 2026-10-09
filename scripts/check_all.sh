@@ -15,4 +15,8 @@ node --check site/app.js
 node --check site/state.js
 python3 scripts/build_site.py
 python3 tests/check_site.py
+node practice/timer/tests/timer.test.cjs
+node practice/timer/tests/ui.test.cjs
+node practice/timer/tests/boundaries.test.cjs
+python3 tests/test_timer_integration.py
 printf '\nPASS: host and structural checks only. ARM, physical hardware and real-browser checks are not included.\n'
