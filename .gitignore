@@ -1,0 +1,17 @@
+# Local tool and build output
+build/
+.build/
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# Personal machine configuration and credentials
+.env
+.env.*
+!.env.example
+*.key
+
+# Keep generated index.html: the course opens without a build step.
