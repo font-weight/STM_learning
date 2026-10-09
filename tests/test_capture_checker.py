@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from check_capture import HEADER, UINT32_MAX, validate_text  # noqa: E402
+from check_capture import HEADER, UINT32_MAX, main, validate_text  # noqa: E402
 
 
 def row(seq=1, t_ms=100, n=100, minimum=0, maximum=4095,
@@ -130,6 +133,96 @@ class CaptureCheckerTests(unittest.TestCase):
     def test_expected_n_override(self):
         result = validate_text(capture(row(n=50)), expected_n=50)
         self.assertTrue(result.ok, result.errors)
+
+    def test_short_capture_is_not_duration_evidence(self):
+        text = capture(row())
+        self.assertTrue(validate_text(text).ok)
+        result = validate_text(text, min_rows_per_session=600, min_device_span_ms=59000)
+        self.assertFalse(result.ok)
+        self.assertIn("only 1 rows", "\n".join(result.errors))
+        self.assertIn("device span 0 ms", "\n".join(result.errors))
+
+    def test_minimum_requirements_apply_to_each_session(self):
+        text = capture(row(), row(2, 200)) + "# session=reset\n" + HEADER + "\n" + row()
+        result = validate_text(text, min_rows_per_session=2, min_device_span_ms=100)
+        self.assertFalse(result.ok)
+        self.assertEqual(len(result.errors), 2)
+        self.assertTrue(all("'reset'" in error for error in result.errors))
+
+    def test_synthetic_one_minute_boundary(self):
+        text = capture(*(row(seq=i, t_ms=i * 100) for i in range(1, 601)))
+        result = validate_text(text, min_rows_per_session=600,
+                               min_device_span_ms=59000,
+                               expected_period_ms=100, require_no_loss=True)
+        self.assertTrue(result.ok, result.errors)
+        self.assertEqual(result.sessions[0].elapsed_device_ms, 59900)
+        self.assertFalse(validate_text(text, min_device_span_ms=60000).ok)
+
+    def test_cadence_handles_gaps_without_double_counting(self):
+        text = capture(row(), row(4, 400, tx=2))
+        self.assertTrue(validate_text(text, expected_period_ms=100).ok)
+        self.assertFalse(validate_text(capture(row(), row(4, 200, tx=2)),
+                                       expected_period_ms=100).ok)
+
+    def test_cadence_tolerance_boundaries(self):
+        for delta, good in ((95, True), (105, True), (94, False), (106, False), (0, False)):
+            with self.subTest(delta=delta):
+                self.assertEqual(validate_text(capture(row(), row(2, 100 + delta)),
+                                               expected_period_ms=100).ok, good)
+
+    def test_cadence_is_optional(self):
+        text = capture(row(), row(2, 105))
+        self.assertTrue(validate_text(text).ok)
+        self.assertFalse(validate_text(text, expected_period_ms=100).ok)
+
+    def test_cadence_wrap(self):
+        text = capture(row(UINT32_MAX, UINT32_MAX - 49), row(0, 50))
+        self.assertTrue(validate_text(text, expected_period_ms=100).ok)
+
+    def test_replaced_unfinished_session_marker_is_error(self):
+        self.assert_bad("# session=lost\n# session=next\n" + HEADER + "\n" + row(),
+                        "previous session marker not followed")
+
+    def test_strict_line_boundaries_and_whitespace(self):
+        for separator in ("\v", "\f", "\r", "\x85", "\u2028", "\u2029"):
+            with self.subTest(separator=repr(separator)):
+                self.assertFalse(validate_text(capture(row().rstrip("\r\n") +
+                                                       separator + row(2, 200))).ok)
+        for line in (" " + row(), row().replace(",100,", ", 100,", 1),
+                     row().rstrip("\r\n") + " \n"):
+            with self.subTest(line=line):
+                self.assertFalse(validate_text(capture(line)).ok)
+
+    def test_api_argument_validation(self):
+        for kwargs in ({"expected_n": 0}, {"min_rows_per_session": 0},
+                       {"min_device_span_ms": -1}, {"expected_period_ms": 0},
+                       {"expected_period_ms": 1 << 31}, {"period_tolerance_ms": -1}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                validate_text(capture(row()), **kwargs)
+
+    def test_cli_codes_and_preserved_carriage_returns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.csv"
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                path.write_bytes(b"\xef\xbb\xbf" + capture(row()).encode())
+                self.assertEqual(main([str(path)]), 0)
+                self.assertEqual(main([str(path), "--min-rows", "600"]), 1)
+                self.assertEqual(main([str(path), "--expected-period-ms", "100"]), 0)
+                path.write_bytes(capture(row(), row(2, 200)).replace("\r\n", "\r").encode())
+                self.assertEqual(main([str(path)]), 1)
+                path.write_bytes(b"\xff\xfe")
+                self.assertEqual(main([str(path)]), 2)
+                self.assertEqual(main([str(path.with_name("missing.csv"))]), 2)
+
+    def test_cli_invalid_thresholds(self):
+        for option, value in (("--expected-n", "0"), ("--min-rows", "0"),
+                              ("--min-device-span-ms", "-1"),
+                              ("--expected-period-ms", "0"),
+                              ("--period-tolerance-ms", "-1")):
+            with self.subTest(option=option), redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as stopped:
+                    main(["not-opened.csv", option, value])
+                self.assertEqual(stopped.exception.code, 2)
 
 
 if __name__ == "__main__":

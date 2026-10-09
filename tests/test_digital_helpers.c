@@ -24,6 +24,17 @@ static void test_time(void)
     assert(digital_periods_due(36u, &anchor, 0u) == 0u);
     assert(digital_periods_due(36u, &anchor, UINT32_MAX) == 0u);
     assert(anchor == 35u);
+    /* L03 prediction trace: complete one slot and keep the original phase. */
+    anchor = UINT32_C(0xFFFFFFF0);
+    assert(digital_periods_due(UINT32_C(0x10), &anchor, 25u) == 1u);
+    assert(anchor == 9u);
+    assert((uint32_t)(UINT32_C(0x10) - anchor) == 7u);
+    assert(digital_periods_due(UINT32_C(0x21), &anchor, 25u) == 0u);
+    assert(digital_periods_due(UINT32_C(0x22), &anchor, 25u) == 1u);
+    assert(anchor == UINT32_C(0x22));
+    anchor = UINT32_C(0xFFFFFFF0);
+    assert(digital_periods_due(UINT32_C(0x42), &anchor, 25u) == 3u);
+    assert(anchor == UINT32_C(0x3B));
     /* Property: adding the same modulo offset changes neither elapsed result
        nor number of due periods, even when the representation wraps. */
     for (uint32_t interval = 1u; interval < 200u; ++interval) {

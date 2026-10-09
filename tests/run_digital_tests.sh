@@ -29,3 +29,6 @@ if [[ "${SANITIZE:-1}" == 1 ]]; then
         -fsanitize=address,undefined -o "$build/uart_mock_tests_sanitized"
     ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" "$build/uart_mock_tests_sanitized"
 fi
+
+# Material regression: the intentionally incomplete learner scaffold is separate.
+bash "$repo/examples/digital/transfer-guard/run_tests.sh" --reference

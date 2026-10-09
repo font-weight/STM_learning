@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="730" viewBox="0 0 1200 730" role="img" aria-labelledby="title desc" lang="ru">
+<title id="title">Базовое дерево тактирования STM32F103C8: HSI 8 МГц</title><desc id="desc">В основном маршруте курса PLL выключен. HSI номинально 8 МГц подаётся на SYSCLK; AHB /1 даёт HCLK 8 МГц. APB1 /1 даёт PCLK1 8 МГц и тактовую частоту TIM2/TIM3 8 МГц. APB2 /1 даёт PCLK2 8 МГц и тактовую частоту TIM1 8 МГц. Делитель ADC /2 от PCLK2 даёт ADCCLK 4 МГц. Для F103: при делителе APB /1 частота таймера равна PCLK, при другом делителе равна двум PCLK. Частота событий таймера дополнительно зависит от PSC и ARR.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8.7" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9 Z" fill="#435C69"/></marker></defs>
+<rect width="1200" height="730" fill="#FCFDFE"/>
+<text x="40" y="47" font-family="DejaVu Sans, sans-serif" font-size="30" font-weight="700" text-anchor="start" fill="#183443">Базовые часы: проследи путь до периферии</text>
+<text x="40" y="81" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#435C69">STM32F103C8 · основной маршрут курса · номинальные частоты, PLL выключен</text>
+<rect x="50" y="130" width="250" height="112" rx="12" fill="#EDF4FA" stroke="#285A80" stroke-width="1.6"/>
+<text x="175" y="168" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="700" text-anchor="middle" fill="#285A80">HSI</text>
+<text x="175" y="209" font-family="DejaVu Sans, sans-serif" font-size="30" font-weight="700" text-anchor="middle" fill="#183443">8 МГц</text>
+<rect x="450" y="130" width="250" height="112" rx="12" fill="#EDF4FA" stroke="#285A80" stroke-width="1.6"/>
+<text x="575" y="168" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="700" text-anchor="middle" fill="#285A80">SYSCLK</text>
+<text x="575" y="209" font-family="DejaVu Sans, sans-serif" font-size="30" font-weight="700" text-anchor="middle" fill="#183443">8 МГц</text>
+<rect x="900" y="130" width="250" height="112" rx="12" fill="#EDF4FA" stroke="#285A80" stroke-width="1.6"/>
+<text x="1025" y="168" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="700" text-anchor="middle" fill="#285A80">HCLK</text>
+<text x="1025" y="209" font-family="DejaVu Sans, sans-serif" font-size="30" font-weight="700" text-anchor="middle" fill="#183443">8 МГц</text>
+<path d="M 300 186 H 443" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="374" y="157" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="middle" fill="#435C69">напрямую</text>
+<path d="M 700 186 H 893" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="796" y="157" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="700" text-anchor="middle" fill="#435C69">AHB /1</text>
+<path d="M 1025 242 V 285 H 280 V 343" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 900 285 V 343" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<circle cx="900" cy="285" r="4" fill="#435C69"/>
+<rect x="100" y="350" width="360" height="107" rx="12" fill="#EDF4FA" stroke="#285A80" stroke-width="1.6"/>
+<text x="280.0" y="388" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="middle" fill="#285A80">APB1 /1</text>
+<text x="280.0" y="428" font-family="DejaVu Sans, sans-serif" font-size="27" font-weight="700" text-anchor="middle" fill="#183443">PCLK1 = 8 МГц</text>
+<rect x="680" y="350" width="440" height="107" rx="12" fill="#EDF4FA" stroke="#285A80" stroke-width="1.6"/>
+<text x="900.0" y="388" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="middle" fill="#285A80">APB2 /1</text>
+<text x="900.0" y="428" font-family="DejaVu Sans, sans-serif" font-size="27" font-weight="700" text-anchor="middle" fill="#183443">PCLK2 = 8 МГц</text>
+<path d="M 280 457 V 518" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 900 457 V 485 H 745 V 518" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<path d="M 900 485 H 1020 V 518" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1070" y="491" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" text-anchor="start" fill="#435C69">ADC /2</text>
+<rect x="100" y="525" width="360" height="99" rx="12" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="280" y="563" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="700" text-anchor="middle" fill="#006958">TIM2 · TIM3</text>
+<text x="280" y="600" font-family="DejaVu Sans, sans-serif" font-size="28" font-weight="700" text-anchor="middle" fill="#183443">8 МГц</text>
+<rect x="640" y="525" width="210" height="99" rx="12" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="745" y="563" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="700" text-anchor="middle" fill="#006958">TIM1</text>
+<text x="745" y="600" font-family="DejaVu Sans, sans-serif" font-size="28" font-weight="700" text-anchor="middle" fill="#183443">8 МГц</text>
+<rect x="890" y="525" width="260" height="99" rx="12" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="1020" y="563" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="700" text-anchor="middle" fill="#006958">ADCCLK</text>
+<text x="1020" y="600" font-family="DejaVu Sans, sans-serif" font-size="28" font-weight="700" text-anchor="middle" fill="#183443">4 МГц</text>
+<text x="40" y="667" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#435C69">Правило F103: APB /1 → fTIM = PCLK; другой делитель APB → fTIM = 2 × PCLK.</text>
+<text x="40" y="702" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#435C69">8 МГц на TIM — частота его тактирования. Частоту событий задают также PSC и ARR.</text>
+</svg>

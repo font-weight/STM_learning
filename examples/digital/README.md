@@ -1,16 +1,37 @@
 # Как включать учебный код в проект CubeMX
 
-Это **не самостоятельные прошивки**: здесь нет startup, linker script, CMSIS, HAL, `.ioc` и сгенерированного `main`. Код предназначен для переноса в собственный проект STM32F103C8T6 из L00. Аппаратная проверка на Blue Pill не выполнялась. `examples/common/digital_helpers.c` имеет выполненные pure-C host-тесты; UART adapter дополнительно проверен с host-only имитацией HAL. Это не target build.
+Это **не самостоятельные прошивки**: здесь нет startup, linker script, CMSIS, HAL, `.ioc` и сгенерированного `main`. Код предназначен для переноса в сохранённый проект для подтверждённого в L00 STM32F103C8/CB. Аппаратная проверка на Blue Pill не выполнялась. `examples/common/digital_helpers.c` имеет выполненные pure-C host-тесты; UART adapter дополнительно проверен с host-only имитацией HAL. Это не target build.
 
 ## Один договор для всех лабораторных
 
-- МК: STM32F103C8T6; Flash 64 KiB, SRAM 20 KiB. Не увеличивать Flash до 128 KiB ради успешной линковки.
+- Базовый профиль: STM32F103C8T6, Flash 64 KiB, SRAM 20 KiB. Если L00 подтвердил CB, сохраняй именно его chip target; код курса всё равно держи в бюджете 64 KiB/20 KiB. Не выдавай непроверенную C8 Flash за 128 KiB ради успешной линковки.
 - Original STM32CubeMX + STM32CubeF1 HAL1, без RTOS. HSI nominal 8 MHz, PLL выключен; AHB/APB1/APB2 `/1`. Не переносить сюда настройки F4/F7 или HAL2.
 - `SYS → Debug: Serial Wire`; PA13/PA14 остаются SWD.
-- `PC13`: output push-pull, low speed 2 MHz, initial high, no pull. Только если L00 подтвердил штатный LED с активным нулём. Для другой платы адаптировать `led_write`, а не всю логику.
+- LED-вариант наследуется из L00: подтверждённый штатный PC13 active-low или внешний PB0 active-high. Output push-pull, low speed 2 MHz, no pull; начальный выключенный уровень и четыре `APP_LED_*` определения — по таблице ниже. Не меняй только `led_write`, оставляя toggle или прямые записи на старом выводе.
 - Общие выводы: PB12 кнопка; PA1 TIM2_CH2 PWM; PA8 TIM1_CH1 capture; PA9/PA10 USART1. PA0 и TIM3 оставлены аналоговым лабораторным.
 - Для первоначального UART: 9600, 8N1; 115200 вводится отдельно после измерения. 3,3 V логика и общий GND.
 - Все сохранённые числа времени измеряются в `uint32_t` миллисекундах `HAL_GetTick()`. Таймерные тики имеют отдельную единицу измерения.
+
+<a id="led-variants"></a>
+## Два проверяемых варианта LED
+
+В L01 задай четыре `APP_LED_*` определения в `USER CODE BEGIN PD` и сохрани их при переходе к следующим лабораторным. Они относятся только к LED; PB12-кнопка, PWM PA1 и остальные выводы не меняются. Полярность должна соответствовать проверенной в L00 схеме.
+
+| Что настраивается | Штатный PC13, active-low | Внешний PB0 через 1 kΩ, active-high |
+|---|---|---|
+| `APP_LED_PORT` | `GPIOC` | `GPIOB` |
+| `APP_LED_PIN` | `GPIO_PIN_13` | `GPIO_PIN_0` |
+| `APP_LED_ON` | `GPIO_PIN_RESET` | `GPIO_PIN_SET` |
+| `APP_LED_OFF`; initial output в CubeMX | `GPIO_PIN_SET`; High | `GPIO_PIN_RESET`; Low |
+| HAL toggle во всех примерах | `HAL_GPIO_TogglePin(APP_LED_PORT, APP_LED_PIN)` | Та же строка, определения выбирают PB0 |
+| GPIO mode register/field | `GPIOC->CRH`, bits 23:20, MODE13/CNF13 | `GPIOB->CRL`, bits 3:0, MODE0/CNF0 |
+| ODR/IDR bit | GPIOC, bit 13 | GPIOB, bit 0 |
+| BSRR: высокий уровень | `GPIOC->BSRR = 1u << 13` (LED off) | `GPIOB->BSRR = 1u` (LED on) |
+| BSRR: низкий уровень | `GPIOC->BSRR = 1u << 29` (LED on) | `GPIOB->BSRR = 1u << 16` (LED off) |
+| RCC APB2 gate | IOPCEN / GPIOC | IOPBEN / GPIOB |
+| Fault injection только в L01 | `__HAL_RCC_GPIOC_CLK_DISABLE()` | `__HAL_RCC_GPIOB_CLK_DISABLE()` |
+
+Выражение `on ? APP_LED_ON : APP_LED_OFF` применяется одинаково в L02, L03, L04 и L11. CubeMX должен настроить именно выбранный вывод; макросы не включают периферию сами. После L02 GPIOB также обслуживает кнопку, поэтому переносить опыт с отключением этого порта в объединённое приложение без переоценки нельзя.
 
 ## Файлы и точки вставки
 
@@ -29,3 +50,10 @@
 ## Граница доказательств
 
 `tests/run_digital_tests.sh` компилирует независимую логику и UART adapter с mock HAL обычным GCC на компьютере. Это проверяет арифметику, индексы, разбор строк, переходы состояний и software-политику recovery/TX ownership. Это **не** проверяет `.ioc`, регистры, работу прерываний, электрические уровни, период на ножке, ARM ABI или настоящий watchdog. Для каждого лабораторного отчёта отдельно заполняются «host», «target build» и «плата».
+
+
+## Задание с постепенно убираемой опорой
+
+[transfer-guard](transfer-guard/README.md) — отдельное host-only упражнение L11 с договором, незавершённым `student.c`, открытыми тестами и `reference.c` для сверки после попытки. Оно проверяет прогресс новых данных после START, а не hardware watchdog. Не копируй эту папку целиком в CubeMX-проект: два альтернативных `.c` реализуют одинаковый API и не должны линковаться вместе.
+
+Общая регрессия курса собирает только reference. Студенческий запуск исходной заготовки намеренно красный; это обозначенный шаг обучения, а не ошибка обязательной firmware-сборки. Тесты материалов дополнительно компилируют фактический C-блок свежести из L06 и проверяют, что типовые ошибочные решения guard отвергаются.

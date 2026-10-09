@@ -15,6 +15,10 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+# Bound transitive inclusion; these limits are build-time only.
+MAX_MARKDOWN_FILES = 128
+MAX_MARKDOWN_FILE_BYTES = 2_000_000
+MAX_MARKDOWN_TOTAL_BYTES = 8_000_000
 
 def slug(text: str) -> str:
     text = re.sub(r'<[^>]*>', '', text)
@@ -31,21 +35,26 @@ class Markdown:
         self.root, self.source, self.routes = root, source, routes
         self.headings: list[dict[str, str | int]] = []
         self.ids: dict[str, int] = {}
+        self.linked_markdown: set[str] = set()
+        self.unsafe_markdown_links: list[str] = []
 
-    def local(self, target: str) -> tuple[str | None, str]:
+    def local(self, target: str, discover: bool = False) -> tuple[str | None, str]:
         target = html.unescape(target.strip())
         parsed = urlsplit(target)
         if parsed.scheme:
             return (target, '') if parsed.scheme.lower() in ('https', 'http', 'mailto') else (None, '')
         if target.startswith('//') or '\\' in target:
+            if discover and not target.startswith('//') and Path(unquote(parsed.path)).suffix.lower() == '.md': self.unsafe_markdown_links.append(target)
             return None, ''
         if target.startswith('#'):
             return '#section/' + quote(self.routes.get(self.source, 'document/' + self.source), safe='/') + '/' + quote(unquote(target[1:]), safe=''), ''
         candidate = (self.root / self.source).parent / unquote(parsed.path)
         try:
             rel = candidate.resolve().relative_to(self.root.resolve()).as_posix()
-        except ValueError:
+        except (ValueError, RuntimeError):
+            if discover and Path(unquote(parsed.path)).suffix.lower() == '.md': self.unsafe_markdown_links.append(target)
             return None, ''
+        if discover and Path(rel).suffix.lower() == '.md': self.linked_markdown.add(rel)
         if rel in self.routes:
             route = self.routes[rel]
             if parsed.fragment:
@@ -76,7 +85,7 @@ class Markdown:
         raw = re.sub(r'!\[([^\]]*)\]\(([^\s)]+)(?:\s+"[^"]*")?\)', image, raw)
         def link(m: re.Match[str]) -> str:
             label, target = m[1], m[2]
-            href, _ = self.local(target)
+            href, _ = self.local(target, discover=True)
             if not href:
                 return hold(html.escape(label))
             external = ' rel="noopener noreferrer"' if href.startswith(('http:', 'https:')) else ''
@@ -107,6 +116,7 @@ class Markdown:
         i = 0
         list_re = re.compile(r'^(\s*)([-+*]|\d+[.)])\s+(.+)$')
         def starts(line: str) -> bool:
+            if line.strip() == '<details>' or re.fullmatch(r'''\s*<a id=["']([a-zA-Z0-9_-]+)["']></a>\s*''', line): return True
             return bool(re.match(r'^\s*(?:#{1,6}\s|```|~~~|>\s?|(?:[-+*]|\d+[.)])\s|(?:---+|\*\*\*+|___+)\s*$)', line))
         while i < len(lines):
             line = lines[i]
@@ -119,7 +129,7 @@ class Markdown:
                     code.append(lines[i]); i += 1
                 i += 1
                 lang = re.sub(r'[^\w+-]', '', language) or 'text'
-                out.append('<div class="code-block"><div class="code-top"><span>' + html.escape(lang) + '</span><button type="button" class="copy-code" aria-label="Скопировать блок кода">Копировать</button></div><pre tabindex="0"><code class="language-' + html.escape(lang, quote=True) + '">' + html.escape('\n'.join(code)) + '</code></pre></div>')
+                out.append('<div class="code-block"><div class="code-top"><span>' + html.escape(lang) + '</span><div class="code-actions"><button type="button" class="wrap-code" aria-pressed="false" aria-label="Перенос длинных строк кода">Перенос строк</button><button type="button" class="copy-code" aria-label="Скопировать блок кода">Копировать</button></div></div><pre tabindex="0" role="region" aria-label="Код, прокручивается по горизонтали"><code class="language-' + html.escape(lang, quote=True) + '">' + html.escape('\n'.join(code)) + '</code></pre></div>')
                 continue
             if line.strip() == '<details>':
                 j = i + 1
@@ -131,8 +141,8 @@ class Markdown:
                         strip = lines[j].strip()
                         found_fence = re.match(r'^(`{3,}|~{3,})', strip)
                         if found_fence:
-                            if active_fence is None: active_fence = found_fence[1][0]
-                            elif strip.startswith(active_fence * 3): active_fence = None
+                            if active_fence is None: active_fence = found_fence[1]
+                            elif re.fullmatch(re.escape(active_fence[0]) + '{' + str(len(active_fence)) + r',}\s*', strip): active_fence = None
                         elif active_fence is None:
                             if strip == '<details>': depth += 1
                             elif strip == '</details>':
@@ -154,9 +164,13 @@ class Markdown:
                 count = self.ids.get(base, 0); self.ids[base] = count + 1
                 ident = base + (f'-{count}' if count else '')
                 self.headings.append({'id': ident, 'title': re.sub(r'[`*_]', '', title), 'level': level})
-                # Site owns its h1; document titles begin at h2.
-                actual = min(6, level + 1)
-                out.append(f'<h{actual} id="article-{html.escape(ident, quote=True)}">{self.inline(title)}</h{actual}>'); i += 1; continue
+                # The shell owns the page h1. Preserve its source anchor without duplicating
+                # the title, and keep h2/h3 sections at their original semantic levels.
+                if level == 1:
+                    out.append('<span class="anchor-target source-title" id="article-' + html.escape(ident, quote=True) + '" aria-hidden="true"></span>')
+                else:
+                    out.append(f'<h{level} id="article-{html.escape(ident, quote=True)}">{self.inline(title)}</h{level}>')
+                i += 1; continue
             if re.match(r'^\s*(---+|\*\*\*+|___+)\s*$', line): out.append('<hr>'); i += 1; continue
             if line.lstrip().startswith('>'):
                 quote_lines = []
@@ -206,6 +220,54 @@ class Markdown:
             out.append('<p>' + self.inline(' '.join(paragraph)) + '</p>')
         return '\n'.join(out)
 
+def confined_markdown_path(root: Path, path: str) -> str:
+    """Canonical repository path; resolve symlinks before allowing any read."""
+    try:
+        candidate = (root / path).resolve()
+        rel = candidate.relative_to(root.resolve()).as_posix()
+    except (ValueError, RuntimeError) as error:
+        raise ValueError('Markdown source is outside repository: ' + path) from error
+    if candidate.suffix.lower() != '.md': raise ValueError('Expected a Markdown source: ' + path)
+    return rel
+
+def discover_markdown(root: Path, seeds: set[str], allow_missing: bool = False) -> tuple[dict[str, str], set[str], list[str]]:
+    """Snapshot only seed documents and Markdown reachable through rendered links.
+
+    Reusing the renderer means fenced/inline code and unsupported raw HTML do not
+    accidentally include files. A visited set handles cycles; sorted work makes
+    output and errors deterministic. Non-Markdown downloads are never traversed.
+    """
+    initial = {confined_markdown_path(root, path) for path in seeds}
+    pending = set(initial); sources: dict[str, str] = {}; missing: list[str] = []
+    total_bytes = 0
+    while pending:
+        path = min(pending); pending.remove(path)
+        if path in sources: continue
+        if len(sources) >= MAX_MARKDOWN_FILES:
+            raise ValueError('Markdown discovery exceeds ' + str(MAX_MARKDOWN_FILES) + ' files')
+        candidate = root / confined_markdown_path(root, path)
+        if not candidate.is_file():
+            if not allow_missing: raise FileNotFoundError('Missing required or linked Markdown: ' + path)
+            missing.append(path)
+            content = '# Материал ожидает интеграции\n\nЭто временная тестовая сборка интерфейса. Файл ' + path + ' ещё не добавлен.'
+        else:
+            if candidate.stat().st_size > MAX_MARKDOWN_FILE_BYTES:
+                raise ValueError('Markdown source exceeds per-file size limit: ' + path)
+            raw = candidate.read_bytes()
+            if len(raw) > MAX_MARKDOWN_FILE_BYTES:
+                raise ValueError('Markdown source exceeds per-file size limit: ' + path)
+            total_bytes += len(raw)
+            if total_bytes > MAX_MARKDOWN_TOTAL_BYTES:
+                raise ValueError('Markdown sources exceed total size limit')
+            content = raw.decode('utf-8')
+        sources[path] = content
+        scanner = Markdown(root, path, {})
+        scanner.render(content)
+        if scanner.unsafe_markdown_links:
+            raise ValueError('Linked Markdown leaves repository: ' + path + ' -> ' + scanner.unsafe_markdown_links[0])
+        pending.update(scanner.linked_markdown - sources.keys())
+    return sources, initial, missing
+
 def normalize(schema: dict) -> dict:
     if schema.get('schema_version') != 1: raise ValueError('Expected schema_version: 1')
     if not re.fullmatch(r'[a-zA-Z0-9_-]+', schema.get('id', '')): raise ValueError('Invalid course id')
@@ -224,32 +286,29 @@ def normalize(schema: dict) -> dict:
 
 def build(root: Path, schema_path: Path, output: Path, allow_missing: bool = False) -> dict:
     schema = normalize(json.loads(schema_path.read_text(encoding='utf-8')))
-    routes = {m['path']: 'module/' + m['id'] for m in schema['modules']}
-    markdown_paths = sorted({str(p.relative_to(root).as_posix()) for p in (root/'docs').rglob('*.md')} | {d['path'] for d in schema.get('documents', [])})
-    if (root/'README.md').exists(): markdown_paths.append('README.md')
-    for path in markdown_paths:
+    seeds = {str(p.relative_to(root).as_posix()) for p in (root/'docs').rglob('*.md')}
+    seeds.update(d['path'] for d in schema.get('documents', []))
+    seeds.update(m['path'] for m in schema['modules'])
+    if (root/'README.md').exists(): seeds.add('README.md')
+    sources, initial, missing = discover_markdown(root, seeds, allow_missing)
+    routes = {confined_markdown_path(root, m['path']): 'module/' + m['id'] for m in schema['modules']}
+    for path in sources:
         if path not in routes: routes[path] = 'document/' + path
     payload = {**schema, 'documents': [], 'build': ''}
     source_hash = hashlib.sha256(schema_path.read_bytes())
-    missing = []
+    source_hash.update(Path(__file__).read_bytes())
     def document(path: str, title: str | None = None) -> dict:
-        candidate = (root/path).resolve()
-        try: candidate.relative_to(root.resolve())
-        except ValueError: raise ValueError('Source is outside repository: ' + path)
-        if not candidate.is_file():
-            if not allow_missing: raise FileNotFoundError('Missing required Markdown: ' + path)
-            missing.append(path)
-            content = '# Материал ожидает интеграции\n\nЭто временная тестовая сборка интерфейса. Файл ' + path + ' ещё не добавлен.'
-        else: content = candidate.read_text(encoding='utf-8')
+        path = confined_markdown_path(root, path)
+        content = sources[path]
         source_hash.update(path.encode()); source_hash.update(content.encode())
         renderer = Markdown(root, path, routes)
         rendered = renderer.render(content)
         h1 = next((h['title'] for h in renderer.headings if h['level']==1), None)
-        return {'path':path, 'title':title or h1 or Path(path).stem, 'html':rendered, 'headings':renderer.headings, 'searchText':re.sub(r'\s+', ' ', content).lower()}
+        return {'path':path, 'title':title or h1 or Path(path).stem, 'html':rendered, 'headings':renderer.headings, 'searchText':re.sub(r'\s+', ' ', content).lower(), 'linked_only':path not in initial}
     for m in payload['modules']: m.update(document(m['path'],m['title']))
     preferred = {d['path']: d['title'] for d in schema.get('documents', [])}
     priority = ['docs/START_HERE.md','docs/SAFETY.md','docs/TOOLCHAIN.md','docs/DEBUGGING.md','docs/SOURCES.md','docs/ROADMAP.md','docs/ASSESSMENT.md','docs/CAPSTONE.md','docs/AI_WORKFLOW.md','docs/progress-template.md']
-    docs = [p for p in markdown_paths if p not in {m['path'] for m in schema['modules']}]
+    docs = [p for p in sources if p not in {confined_markdown_path(root, m['path']) for m in schema['modules']}]
     docs.sort(key=lambda p: (priority.index(p) if p in priority else len(priority), p))
     payload['documents'] = [document(p,preferred.get(p)) for p in docs]
     assets = {name: (ROOT/'site'/name).read_text(encoding='utf-8') for name in ('index.template.html','styles.css','state.js','app.js')}
@@ -260,7 +319,7 @@ def build(root: Path, schema_path: Path, output: Path, allow_missing: bool = Fal
     if 'COURSE_DATA_JSON' in result: raise ValueError('Unreplaced template token')
     output.parent.mkdir(parents=True,exist_ok=True)
     output.write_text(result,encoding='utf-8')
-    report={'output':str(output),'modules':len(payload['modules']),'documents':len(payload['documents']),'bytes':output.stat().st_size,'build':payload['build'],'missing':missing}
+    report={'output':str(output),'modules':len(payload['modules']),'documents':len(payload['documents']),'bytes':output.stat().st_size,'build':payload['build'],'missing':missing,'linked_markdown':sum(d['linked_only'] for d in payload['documents'])}
     return report
 
 if __name__ == '__main__':

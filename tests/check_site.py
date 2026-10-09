@@ -9,10 +9,24 @@ import re
 from urllib.parse import unquote, urlsplit
 
 class Inspect(HTMLParser):
-    def __init__(self): super().__init__();self.links=[];self.ids=[];self.remote_assets=[]
+    def __init__(self):
+        super().__init__();self.links=[];self.ids=[];self.remote_assets=[]
+        self.headings=[];self.code_blocks=0;self.copy_controls=0;self.wrap_controls=0;self.hints=0;self.semantics=[]
     def handle_starttag(self,tag,attrs):
         attrs=dict(attrs)
         if 'id' in attrs:self.ids.append(attrs['id'])
+        classes=attrs.get('class','').split()
+        if re.fullmatch(r'h[1-6]',tag):self.headings.append(int(tag[1]))
+        if tag=='pre':
+            self.code_blocks+=1
+            if attrs.get('tabindex')!='0' or attrs.get('role')!='region' or not attrs.get('aria-label'):self.semantics.append('Code scroll region is not named and keyboard focusable')
+        if tag=='button' and 'copy-code' in classes:self.copy_controls+=1
+        if tag=='button' and 'wrap-code' in classes:
+            self.wrap_controls+=1
+            if attrs.get('aria-pressed')!='false':self.semantics.append('Code wrap control must start unpressed')
+        if tag=='details' and 'lesson-hint' in classes:
+            self.hints+=1
+            if 'open' in attrs:self.semantics.append('Lesson hint must start closed')
         if tag=='a' and 'href' in attrs:self.links.append(attrs['href'])
         if tag in ('script','img','iframe','audio','video','source','link'):
             url=attrs.get('src') or attrs.get('href') or ''
@@ -33,6 +47,10 @@ def check(root:Path,allow_missing:bool=False):
         parser=Inspect();parser.feed(d['html']);parsed[route]=parser
         if len(parser.ids)!=len(set(parser.ids)):errors.append(route+': duplicate element IDs')
         if parser.remote_assets:errors.append(route+': content depends on nonembedded assets')
+        if 1 in parser.headings:errors.append(route+': content duplicates the shell h1')
+        if parser.code_blocks!=parser.copy_controls or parser.code_blocks!=parser.wrap_controls:errors.append(route+': missing copy/wrap controls for code blocks')
+        errors.extend(route+': '+error for error in parser.semantics)
+        if route.startswith('module/') and 'article-reader-checks' in parser.ids:errors.append(route+': source uses reserved reader-checks anchor')
         if 'Материал ожидает интеграции' in d['html']:errors.append(route+': missing-source placeholder')
     checked=0
     for route,p in parsed.items():
@@ -54,8 +72,8 @@ def check(root:Path,allow_missing:bool=False):
                     (warnings if allow_missing else errors).append(route+': missing local asset '+href)
     shell=Inspect();shell.feed(source[:match.start()])
     if shell.remote_assets:errors.append('Shell has external runtime assets: '+str(shell.remote_assets))
-    if re.search(r'\bfetch\s*\(|XMLHttpRequest|https?://[^\s]+\.css',source[match.end():]):errors.append('Runtime network dependency detected')
-    report={'kind':'static-release-check','modules':len(data['modules']),'documents':len(data['documents']),'internal_and_external_links_checked':checked,'build':data['build'],'errors':errors,'warnings':warnings}
+    if re.search(r'\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|importScripts|https?://[^\s]+\.css',source[match.end():]):errors.append('Runtime network dependency detected')
+    report={'kind':'static-release-check','modules':len(data['modules']),'documents':len(data['documents']),'internal_and_external_links_checked':checked,'build':data['build'],'code_blocks':sum(p.code_blocks for p in parsed.values()),'closed_hint_blocks':sum(p.hints for p in parsed.values()),'verification_scope':'static content and runtime-source contracts; no browser rendering or hardware execution','errors':errors,'warnings':warnings}
     return report
 
 if __name__=='__main__':

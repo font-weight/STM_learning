@@ -20,9 +20,10 @@ def run(url:str,output:Path,binary:str):
     with sync_playwright() as p:
         browser=p.chromium.launch(executable_path=binary,headless=True,args=['--no-sandbox'])
         context=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,color_scheme='light',locale='ru-RU')
-        page=context.new_page();page.on('pageerror',lambda error:errors.append(str(error)));page.on('request',lambda request:requests.append(request.url))
+        page=context.new_page();page.on('pageerror',lambda error:errors.append(str(error)));page.on('request',lambda request:requests.append({'url':request.url,'type':request.resource_type}))
         page.goto(url,wait_until='load');expect(page.locator('.module-card')).to_have_count(14)
         page.screenshot(path=str(output/'desktop-home.png'),full_page=True)
+        build=page.locator('#build-id').text_content().strip(' ·')
         passed('Home renders 14 modules')
         # Reading after the initial load must not require the network.
         context.set_offline(True)
@@ -40,6 +41,18 @@ def run(url:str,output:Path,binary:str):
             source_link.click();assert '#document/' in page.url
             page.go_back();assert '#module/L00' in page.url
         page.locator('a[href="#module/L00"]').first.click();passed('Module routes, document links, repeated navigation and Back')
+        # Mode changes are ordinary hash routes and must never award completion.
+        before_recall=page.evaluate("localStorage.getItem('stm32-practice:stm32f103-practical-ru:v1')")
+        page.locator('.lesson-actions a[href^="#recall/"]').click()
+        expect(page.locator('#recall-panel')).to_be_visible();expect(page.locator('.lesson-layout')).not_to_be_visible()
+        expect(page.locator('.learning-check')).not_to_be_visible()
+        expect(page.locator('#recall-title')).to_be_focused()
+        assert page.evaluate("localStorage.getItem('stm32-practice:stm32f103-practical-ru:v1')")==before_recall
+        page.go_back();expect(page.locator('.lesson-layout')).to_be_visible()
+        page.locator('.lesson-actions a[href^="#recall/"]').click()
+        page.get_by_role('link',name='Сверить с материалом').click()
+        expect(page.locator('#recall-panel')).not_to_be_visible()
+        passed('Recall hides material, returns through history and comparison, and never changes progress')
         for checkbox in page.locator('[data-checkpoint]').all():checkbox.check()
         expect(page.locator('#sidebar-count')).to_have_text('1 / 14')
         expect(page.locator('#mark-review')).to_be_disabled();passed('Completion requires checklist and self-assessment; future review is disabled')
@@ -85,7 +98,18 @@ def run(url:str,output:Path,binary:str):
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.screenshot(path=str(output/'mobile-module-320.png'),full_page=True)
         assert page.locator('.code-block').count()>0
-        page.locator('.copy-code').first.click();passed('320 px home/module widths and mobile navigation; code copy action invoked')
+        assert page.locator('.article-body').evaluate('(el)=>parseFloat(getComputedStyle(el).fontSize)')>=16
+        assert page.locator('.article-body pre code').first.evaluate('(el)=>parseFloat(getComputedStyle(el).fontSize)')>=13
+        first_code=page.locator('.article-body pre code').first.inner_text()
+        page.locator('.wrap-code').first.click();expect(page.locator('.wrap-code').first).to_have_attribute('aria-pressed','true')
+        assert page.locator('.article-body pre code').first.inner_text()==first_code
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.locator('.wrap-code').first.click();expect(page.locator('.wrap-code').first).to_have_attribute('aria-pressed','false')
+        page.locator('.copy-code').first.click();passed('320 px home/module widths, legible body/code sizing, reversible code wrapping, and mobile navigation')
+        page.get_by_role('button',name='Мой прогресс').click()
+        page.locator('#dialog-theme-toggle').click();expect(page.locator('#dialog-theme-toggle')).to_have_attribute('aria-pressed','true')
+        page.locator('#dialog-theme-toggle').click();expect(page.locator('#dialog-theme-toggle')).to_have_attribute('aria-pressed','false')
+        page.keyboard.press('Escape');passed('Theme is also reachable in the progress dialog at mobile width')
         # Force both clipboard routes to fail and verify the readable manual fallback.
         page.evaluate("Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>Promise.reject(new Error('blocked'))}});document.execCommand=()=>false")
         page.locator('.copy-code').first.click();expect(page.locator('#toast')).to_contain_text('Код выделен')
@@ -116,8 +140,9 @@ def run(url:str,output:Path,binary:str):
         assert blocked_page.locator('input[type=checkbox]').count()==blocked_page.locator('label:has(input[type=checkbox])').count()
         passed('Main landmark, single page h1 and labelled checkboxes')
         blocked.close();browser.close()
-    network=[r for r in requests if urlsplit(r).scheme in ('http','https') and not r.startswith(url.split('#')[0].rstrip('/'))]
-    report={'kind':'actual-browser-qa','url':url,'checks':checks,'page_errors':errors,'unexpected_network_requests':network,'passed':not errors and not network}
+    permitted_document=url.split('#')[0]
+    network=[r for r in requests if urlsplit(r['url']).scheme in ('http','https') and not (r['type']=='document' and r['url'].split('#')[0]==permitted_document)]
+    report={'kind':'actual-browser-qa','url':url,'checks':checks,'page_errors':errors,'unexpected_network_requests':network,'passed':not errors and not network,'build':build}
     (output/'browser-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
     if errors or network:raise AssertionError(report)
     return report

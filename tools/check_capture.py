@@ -43,8 +43,20 @@ class Report:
 
 
 def validate_text(text: str, *, expected_n: int = 100,
-                  require_no_loss: bool = False) -> Report:
+                  require_no_loss: bool = False,
+                  min_rows_per_session: int = 1,
+                  min_device_span_ms: int = 0,
+                  expected_period_ms: int | None = None,
+                  period_tolerance_ms: int = 5) -> Report:
     """Validate complete text. Comments never reset state except # session=... ."""
+    if not 1 <= expected_n <= UINT32_MAX:
+        raise ValueError("expected_n must be a positive uint32_t")
+    if min_rows_per_session < 1 or min_device_span_ms < 0:
+        raise ValueError("minimum rows must be positive and minimum span nonnegative")
+    if expected_period_ms is not None and not 1 <= expected_period_ms < HALF_RANGE:
+        raise ValueError("expected_period_ms must be positive and below uint32 half-range")
+    if period_tolerance_ms < 0:
+        raise ValueError("period_tolerance_ms must be nonnegative")
     report = Report()
     current: Session | None = None
     pending_label: str | None = None
@@ -55,11 +67,15 @@ def validate_text(text: str, *, expected_n: int = 100,
     if "\x00" in text:
         report.errors.append("file: NUL byte found; UART must not send C terminators")
 
-    for line_number, raw_line in enumerate(text.splitlines(), 1):
-        line = raw_line.strip()
+    # Split only on LF. str.splitlines() also treats VT/FF and Unicode separators
+    # as boundaries, which could silently turn a damaged UART row into valid data.
+    for line_number, raw_line in enumerate(text.split("\n"), 1):
+        line = raw_line.removesuffix("\r")
         if not line:
             continue
         if line.startswith("# session="):
+            if pending_label is not None:
+                report.errors.append(f"line {line_number}: previous session marker not followed by header and data")
             pending_label = line[len("# session="):].strip()
             if not pending_label:
                 report.errors.append(f"line {line_number}: empty session identifier")
@@ -124,6 +140,13 @@ def validate_text(text: str, *, expected_n: int = 100,
             elapsed = (row["t_ms"] - previous["t_ms"]) & UINT32_MAX
             if elapsed >= HALF_RANGE:
                 problems.append("device time moved backwards; reset needs a session boundary")
+            if (expected_period_ms is not None and 0 < delta < HALF_RANGE
+                    and elapsed < HALF_RANGE):
+                expected_elapsed = delta * expected_period_ms
+                if abs(elapsed - expected_elapsed) > period_tolerance_ms:
+                    problems.append(
+                        f"device cadence mismatch: seq delta {delta} expects "
+                        f"{expected_elapsed} ms +/- {period_tolerance_ms}, got {elapsed}")
             for name in ("dropped_adc", "dropped_tx"):
                 if row[name] < previous[name]:
                     problems.append(f"{name} decreased within a session")
@@ -142,6 +165,12 @@ def validate_text(text: str, *, expected_n: int = 100,
     for session in report.sessions:
         if session.rows == 0:
             report.errors.append(f"session {session.label!r}: header without data")
+        elif session.rows < min_rows_per_session:
+            report.errors.append(f"session {session.label!r}: only {session.rows} rows; "
+                                 f"need at least {min_rows_per_session}")
+        if session.rows and session.elapsed_device_ms < min_device_span_ms:
+            report.errors.append(f"session {session.label!r}: device span "
+                                 f"{session.elapsed_device_ms} ms; need at least {min_device_span_ms}")
         if require_no_loss and session.last is not None:
             if (session.sequence_gaps or session.last["dropped_adc"]
                     or session.last["dropped_tx"]):
@@ -158,29 +187,51 @@ def main(argv: list[str] | None = None) -> int:
                         help="expected samples per row (default: 100)")
     parser.add_argument("--require-no-loss", action="store_true",
                         help="fail on any sequence gap or reported drop in a session")
+    parser.add_argument("--min-rows", type=int, default=1,
+                        help="minimum data rows in EACH session (default: 1)")
+    parser.add_argument("--min-device-span-ms", type=int, default=0,
+                        help="minimum first-to-last MCU time span in EACH session; not external time")
+    parser.add_argument("--expected-period-ms", type=int,
+                        help="optional MCU timestamp interval per sequence increment")
+    parser.add_argument("--period-tolerance-ms", type=int, default=5,
+                        help="allowed absolute interval error with --expected-period-ms (default: 5)")
     args = parser.parse_args(argv)
     if not 1 <= args.expected_n <= UINT32_MAX:
         parser.error("--expected-n must be a positive uint32_t")
+    if args.min_rows < 1 or args.min_device_span_ms < 0:
+        parser.error("--min-rows must be positive; --min-device-span-ms must be nonnegative")
+    if args.expected_period_ms is not None and not 1 <= args.expected_period_ms < HALF_RANGE:
+        parser.error("--expected-period-ms must be positive and below uint32 half-range")
+    if args.period_tolerance_ms < 0:
+        parser.error("--period-tolerance-ms must be nonnegative")
     try:
         # utf-8-sig permits a BOM added by some terminal capture tools.
-        text = args.capture.read_text(encoding="utf-8-sig")
+        with args.capture.open(encoding="utf-8-sig", newline="") as source:
+            text = source.read()
     except (OSError, UnicodeError) as error:
         print(f"FAIL: cannot read capture: {error}", file=sys.stderr)
         return 2
     report = validate_text(text, expected_n=args.expected_n,
-                           require_no_loss=args.require_no_loss)
+                           require_no_loss=args.require_no_loss,
+                           min_rows_per_session=args.min_rows,
+                           min_device_span_ms=args.min_device_span_ms,
+                           expected_period_ms=args.expected_period_ms,
+                           period_tolerance_ms=args.period_tolerance_ms)
     for session in report.sessions:
         if session.last is None:
             continue
         last = session.last
-        print(f"{session.label}: rows={session.rows}, sequence_gaps={session.sequence_gaps}, "
+        assert session.first is not None
+        print(f"{session.label}: rows={session.rows}, first_seq={session.first['seq']}, "
+              f"last_seq={last['seq']}, sequence_gaps={session.sequence_gaps}, "
               f"device_span_ms={session.elapsed_device_ms}, "
               f"last_dropped_adc={last['dropped_adc']}, last_dropped_tx={last['dropped_tx']}")
     for error in report.errors:
         print(f"FAIL: {error}", file=sys.stderr)
     if not report.ok:
         return 1
-    print("PASS format/range/session checks. Gaps and reported drops may overlap; do not add them.")
+    print("PASS format/range/session and requested evidence checks. "
+          "Gaps and reported drops may overlap; do not add them.")
     print("File validity does not prove real hardware origin, calibrated voltage, or independent timing.")
     return 0
 

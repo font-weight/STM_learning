@@ -18,7 +18,7 @@ static uint32_t ore_clears;
 static const uint8_t *tx_address;
 static uint16_t tx_length;
 static uint32_t tx_starts;
-static digital_command_t commands[32];
+static digital_command_t commands[128];
 static unsigned command_count;
 
 uint32_t __get_PRIMASK(void) { return primask; }
@@ -184,7 +184,36 @@ int main(void)
     assert(stats.rearm_failures == 2u);
     assert(stats.line_errors == 1u && stats.tx_dropped == 3u);
     assert(stats.rx_bytes > 128u);
+    /* L04: a poll boundary is not a message boundary. Check every split of
+       the same command, including before and after all content bytes. */
+    const char fragmented[] = "PERIOD 250";
+    for (size_t split = 0u; split <= sizeof fragmented - 1u; ++split) {
+        const unsigned before = command_count;
+        for (size_t i = 0u; i < split; ++i) receive_byte((uint8_t)fragmented[i]);
+        uart_console_poll();
+        assert(command_count == before);
+        for (size_t i = split; i < sizeof fragmented - 1u; ++i)
+            receive_byte((uint8_t)fragmented[i]);
+        uart_console_poll();
+        assert(command_count == before); /* still no delimiter */
+        receive_text("\r\n");
+        uart_console_poll();
+        assert(command_count == before + 1u);
+        assert(commands[before].kind == DIGITAL_CMD_PERIOD && commands[before].value == 250u);
+    }
+    /* Six seven-byte commands fit FIFO but exceed the per-poll 32-byte
+       budget. Four dispatch now; two dispatch in the next iteration. */
+    const unsigned before_budget = command_count;
+    receive_text("STATUS\nSTATUS\nSTATUS\nSTATUS\nSTATUS\nSTATUS\n");
+    uart_console_poll();
+    assert(command_count == before_budget + 4u);
+    uart_console_poll();
+    assert(command_count == before_budget + 6u);
+    for (unsigned i = before_budget; i < command_count; ++i)
+        assert(commands[i].kind == DIGITAL_CMD_STATUS);
+
     puts("PASS: UART console mock: RX resync, HAL-error recovery, TX ownership, mask restore");
+    puts("PASS: UART console mock: all command splits and bounded 32-byte poll");
     puts("NOTE: HAL is a host test double; this is not an ARM build or hardware test.");
     return 0;
 }

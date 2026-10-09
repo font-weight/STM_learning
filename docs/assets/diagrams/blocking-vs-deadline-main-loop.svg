@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850" role="img" aria-labelledby="title desc" lang="ru">
+<title id="title">Блокирующее ожидание и проверка срока в main при коротком ISR</title><desc id="desc">Условная трасса, не аппаратное измерение; длительности ISR увеличены для видимости. В обоих вариантах разрешённый короткий ISR фиксирует отдельное событие в условные 60 мс; это событие не перезапускает показанный LED-импульс. При HAL_Delay(80) с 40 до 120 мс main не обслуживает другие задачи, поэтому обрабатывает событие и проверяет срок импульса только около 120 мс. В варианте с проверкой времени main продолжает короткие проходы, обрабатывает событие в следующем проходе и выключает импульс около срока 100 мс. Проверка срока не гарантирует точного аппаратного дедлайна; задержку определяют длительность задач, работа IRQ и момент следующего прохода. Потери событий зависят от контракта флага, счётчика или очереди, а не только от задержки main.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8.7" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9 Z" fill="#435C69"/></marker></defs>
+<rect width="1200" height="850" fill="#FCFDFE"/>
+<text x="40" y="47" font-family="DejaVu Sans, sans-serif" font-size="30" font-weight="700" text-anchor="start" fill="#183443">Ожидание времени: что делает main между событиями?</text>
+<text x="40" y="81" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#435C69">Условная трасса L03, не измерение · ISR увеличены для видимости · IRQ разрешены</text>
+<path d="M 240 161 H 1130" fill="none" stroke="#BBCBD5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 240.0 156 V 167" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="240.0" y="147" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">0</text>
+<path d="M 367.1428571428571 156 V 167" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="367.1428571428571" y="147" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">20</text>
+<path d="M 494.2857142857143 156 V 167" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="494.2857142857143" y="147" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">40</text>
+<path d="M 621.4285714285714 156 V 167" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="621.4285714285714" y="147" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">60</text>
+<path d="M 748.5714285714286 156 V 167" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="748.5714285714286" y="147" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">80</text>
+<path d="M 875.7142857142857 156 V 167" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="875.7142857142857" y="147" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">100</text>
+<path d="M 1002.8571428571429 156 V 167" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1002.8571428571429" y="147" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">120</text>
+<path d="M 1130.0 156 V 167" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1130.0" y="147" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">140</text>
+<text x="1150" y="166" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="start" fill="#435C69">мс</text>
+<path d="M 240 456 H 1130" fill="none" stroke="#BBCBD5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 240.0 451 V 462" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="240.0" y="442" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">0</text>
+<path d="M 367.1428571428571 451 V 462" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="367.1428571428571" y="442" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">20</text>
+<path d="M 494.2857142857143 451 V 462" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="494.2857142857143" y="442" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">40</text>
+<path d="M 621.4285714285714 451 V 462" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="621.4285714285714" y="442" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">60</text>
+<path d="M 748.5714285714286 451 V 462" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="748.5714285714286" y="442" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">80</text>
+<path d="M 875.7142857142857 451 V 462" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="875.7142857142857" y="442" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">100</text>
+<path d="M 1002.8571428571429 451 V 462" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1002.8571428571429" y="442" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">120</text>
+<path d="M 1130.0 451 V 462" fill="none" stroke="#435C69" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1130.0" y="442" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#435C69">140</text>
+<text x="1150" y="461" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="start" fill="#435C69">мс</text>
+<text x="40" y="125" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="700" text-anchor="start" fill="#91421E">A  Блокирующее ожидание</text>
+<text x="40" y="205" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" text-anchor="start" fill="#59427D">Короткий ISR</text>
+<text x="40" y="265" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="start" fill="#183443">main</text>
+<text x="40" y="333" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" text-anchor="start" fill="#006958">LED-импульс</text>
+<path d="M 240 203 H 1130" fill="none" stroke="#BBCBD5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="615.4285714285714" y="185" width="12" height="36" rx="2" fill="#59427D" stroke="#59427D" stroke-width="1.6"/>
+<text x="643.4285714285714" y="194" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="start" fill="#59427D">ISR: другое событие, без продления импульса</text>
+<path d="M 621.4285714285714 223 V 279" fill="none" stroke="#59427D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 6"/>
+<path d="M 240 258 H 1130" fill="none" stroke="#BBCBD5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 240 332 H 1130" fill="none" stroke="#BBCBD5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 875.7142857142857 230 V 359" fill="none" stroke="#006958" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 6"/>
+<path d="M 240 498 H 1130" fill="none" stroke="#BBCBD5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="615.4285714285714" y="480" width="12" height="36" rx="2" fill="#59427D" stroke="#59427D" stroke-width="1.6"/>
+<text x="643.4285714285714" y="489" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="start" fill="#59427D">ISR: другое событие, без продления импульса</text>
+<path d="M 621.4285714285714 518 V 574" fill="none" stroke="#59427D" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 6"/>
+<path d="M 240 553 H 1130" fill="none" stroke="#BBCBD5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 240 627 H 1130" fill="none" stroke="#BBCBD5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 875.7142857142857 525 V 654" fill="none" stroke="#006958" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="5 6"/>
+<rect x="240.0" y="231" width="44.5" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<rect x="392.57142857142856" y="231" width="44.5" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<rect x="494.2857142857143" y="231" width="508.5714285714286" height="52" rx="5" fill="#FFF1E8" stroke="#91421E" stroke-width="1.6"/>
+<text x="748.5714285714286" y="264" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" text-anchor="middle" fill="#91421E">HAL_Delay(80): main занят ожиданием</text>
+<rect x="1002.8571428571429" y="231" width="120.78571428571422" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="1063.25" y="254" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#006958">разбор</text>
+<text x="1063.25" y="277" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#006958">события</text>
+<rect x="240.0" y="310" width="762.8571428571429" height="42" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="532.4285714285714" y="338" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" text-anchor="middle" fill="#006958">импульс остаётся включённым</text>
+<text x="866.7142857142857" y="378" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="end" fill="#006958">срок: 100</text>
+<text x="1006.8571428571429" y="378" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="start" fill="#91421E">проверка: 120</text>
+<text x="40" y="420" font-family="DejaVu Sans, sans-serif" font-size="25" font-weight="700" text-anchor="start" fill="#006958">B  Проверка срока и короткие проходы main</text>
+<text x="40" y="500" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" text-anchor="start" fill="#59427D">Короткий ISR</text>
+<text x="40" y="560" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="start" fill="#183443">main</text>
+<text x="40" y="628" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" text-anchor="start" fill="#006958">LED-импульс</text>
+<rect x="240.0" y="526" width="44.5" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<rect x="354.42857142857144" y="526" width="44.5" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<rect x="468.8571428571429" y="526" width="44.5" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<rect x="583.2857142857142" y="526" width="38.142857142857224" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<rect x="805.7857142857143" y="526" width="44.5" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<rect x="983.7857142857143" y="526" width="44.499999999999886" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<rect x="1085.5" y="526" width="44.5" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<rect x="678.6428571428571" y="526" width="114.42857142857144" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="735.8571428571429" y="550" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#006958">разбор</text>
+<text x="735.8571428571429" y="573" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#006958">события</text>
+<rect x="875.7142857142857" y="526" width="69.92857142857144" height="52" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="910.6785714285713" y="559" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" text-anchor="middle" fill="#006958">срок?</text>
+<rect x="240.0" y="605" width="635.7142857142857" height="42" rx="4" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="526.0714285714286" y="633" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" text-anchor="middle" fill="#006958">импульс активен до проверки срока</text>
+<text x="866.7142857142857" y="673" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="end" fill="#006958">срок: 100</text>
+<text x="885.7142857142857" y="673" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="start" fill="#006958">проверка ≈100</text>
+<rect x="40" y="709" width="1120" height="113" rx="12" fill="#F5F8FA" stroke="#BBCBD5" stroke-width="1.6"/>
+<text x="60" y="743" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="700" text-anchor="start" fill="#183443">В обоих вариантах короткий ISR может выполниться. Отличается время работы main.</text>
+<text x="60" y="777" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#435C69">Срок проверяется в очередном проходе: длинная работа и IRQ всё ещё дают опоздание.</text>
+<text x="60" y="808" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#435C69">Потери зависят от политики флага / счётчика / очереди; рисунок показывает задержку.</text>
+</svg>

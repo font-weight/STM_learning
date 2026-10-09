@@ -4,7 +4,7 @@ CFLAGS ?= -std=c11 -O0 -g -Wall -Wextra -Werror -Wpedantic
 IMPL ?= student.c
 BUILD_DIR ?= build
 
-.PHONY: all build check exercise-check release-check test-list sanitize clean
+.PHONY: all build check exercise-check release-check mutation-check test-list sanitize clean
 all: build
 build: $(BUILD_DIR)/test_stream
 
@@ -20,6 +20,11 @@ exercise-check: check
 release-check: $(BUILD_DIR)/test_stream
 	$(MAKE) IMPL=reference/stream_reference.c BUILD_DIR=build-reference build
 	$(PYTHON) verify_release.py --student $(BUILD_DIR)/test_stream --oracle build-reference/test_stream
+	$(MAKE) mutation-check
+
+# Explicit opt-in: inspects/copies the reference, never modifies student.c.
+mutation-check:
+	CC="$(CC)" CFLAGS="$(CFLAGS)" $(PYTHON) verify_mutations.py
 
 test-list: $(BUILD_DIR)/test_stream
 	./$(BUILD_DIR)/test_stream --list

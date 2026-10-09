@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="Практический маршрут по STM32F103: от отладки Blue Pill до своего измерителя. Весь учебный текст доступен офлайн.">
   <meta name="referrer" content="no-referrer">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23173f50%22%2F%3E%3Cpath%20d%3D%22M7%2012h8v8h10M7%2016h4m10%200h4%22%20fill%3D%22none%22%20stroke%3D%22%23bfdbcd%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E">
   <title>STM32F103 на практике</title>
   <style>/* SITE_CSS */</style>
 </head>
@@ -18,15 +19,15 @@
   <div class="app-layout">
     <aside class="sidebar" id="sidebar" aria-label="Навигация по курсу">
       <a href="#home" class="overview-link"><span aria-hidden="true">▦</span> Карта маршрута</a>
-      <div class="sidebar-progress"><div><span>Основной маршрут</span><strong id="sidebar-count">0 / 14</strong></div><progress id="sidebar-progress" value="0" max="14" aria-label="Выполнено модулей основного маршрута"></progress><p>Отметки вашей практики</p></div>
+      <div class="sidebar-progress"><div><span>Основной маршрут</span><strong id="sidebar-count">0 / 14</strong></div><progress id="sidebar-progress" value="0" max="14" aria-label="Лабораторий отмечено выполненными"></progress><p>Ваши отметки, без автоматической оценки</p></div>
       <nav aria-label="Модули"><p class="nav-caption">Лаборатории</p><ol id="module-nav" class="module-nav"></ol></nav>
       <nav aria-label="Материалы курса"><p class="nav-caption">Под рукой</p><div id="resource-nav" class="resource-nav"></div></nav>
-      <div class="sidebar-note"><span aria-hidden="true">↗</span><p>Не просто прочитать.<br>Собрать, проверить, повторить.</p></div>
+      <div class="sidebar-note"><p>Собрать, измерить,<br>объяснить и повторить.</p></div>
     </aside>
     <div class="main-wrap">
       <div id="storage-warning" class="storage-warning" role="status" hidden></div>
       <main id="main" tabindex="-1"></main>
-      <footer class="page-footer"><span>STM32F103 · практика на своей плате</span><span>Без аккаунта и сетевых запросов<span id="build-id"></span></span></footer>
+      <footer class="page-footer"><span>STM32F103 · практика на своей плате</span><span>Прогресс в этом браузере · Доступна офлайн-версия<span id="build-id"></span></span></footer>
     </div>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -35,10 +36,12 @@
     <p>Отметки хранятся только в этом браузере. При открытии файла локально сохранение зависит от браузера и расположения файла. Экспортируйте копию перед переносом или очисткой данных.</p>
     <p id="dialog-storage-warning" class="storage-warning" hidden></p>
     <button id="recover-progress" class="button button-secondary" type="button" hidden>Скачать исходные данные</button>
+    <p id="storage-status" class="storage-status" role="status" aria-live="polite"></p>
     <div id="dialog-stats" class="dialog-stats"></div>
-    <div class="dialog-actions"><button id="export-progress" class="button button-primary" type="button">Экспорт JSON <span aria-hidden="true">↓</span></button><button id="choose-import" class="button button-secondary" type="button">Импорт JSON <span aria-hidden="true">↑</span></button><input id="import-file" type="file" accept=".json,application/json" hidden></div>
-    <p class="small-text">Импорт заменяет текущие отметки после подтверждения. Совместим только экспорт этого курса, версия 1. Ваши данные никуда не отправляются.</p>
+    <div class="dialog-actions"><button id="export-progress" class="button button-primary" type="button">Экспорт JSON</button><button id="choose-import" class="button button-secondary" type="button">Импорт JSON</button><input id="import-file" type="file" accept=".json,application/json" hidden></div>
+    <p class="small-text">Импорт заменяет текущие отметки после подтверждения. Совместим только экспорт этого курса, версия 1. Курс не отправляет ваши отметки на сервер.</p>
     <div id="import-status" class="import-status" role="status" aria-live="polite"></div>
+    <div class="progress-options"><button id="dialog-theme-toggle" class="button button-secondary" type="button" aria-pressed="false">Тема: светлая</button></div>
     <div class="reset-row"><div><strong>Начать заново</strong><p class="small-text">Удалить отметки и план повторений.</p></div><button id="reset-progress" class="button button-danger" type="button">Сбросить</button></div>
   </dialog>
   <noscript><div class="noscript"><h1>Материалы доступны без JavaScript</h1><p>Для интерактивного читателя нужен JavaScript. Все исходные уроки находятся в папке docs/labs, а маршрут начинается в <a href="docs/START_HERE.md">docs/START_HERE.md</a>.</p></div></noscript>

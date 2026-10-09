@@ -68,6 +68,24 @@ static int test_full_fifo(void)
     stream_record_t untouched = sample(123U);
     REQUIRE(!record_queue_pop(&q, &untouched));
     REQUIRE(untouched.seq == 123U);
+
+    /* Producer may reuse its local source as soon as push returns. */
+    stream_record_t source = {17U, 23U, 29U, 31U, 37U, 41U, 43U, 47U, 53U, 59U};
+    stream_record_t copied = source;
+    stream_record_t copied_out = {0};
+    REQUIRE(record_queue_push(&q, &source));
+    memset(&source, 0xA5, sizeof source);
+    REQUIRE(record_queue_pop(&q, &copied_out));
+    REQUIRE(same_record(&copied_out, &copied));
+    /* Reset a nonempty used queue; keep this here so initial_empty needs only
+     * init + empty-pop, as required by the staged student exercise. */
+    REQUIRE(record_queue_push(&q, &copied));
+    q.rejected = 17U;
+    record_queue_init(&q);
+    REQUIRE(q.head == 0U && q.tail == 0U && q.count == 0U);
+    REQUIRE(q.rejected == 0U);
+    REQUIRE(!record_queue_pop(&q, &copied_out));
+    REQUIRE(same_record(&copied_out, &copied));
     return 0;
 }
 
@@ -99,6 +117,48 @@ static int test_wraparound(void)
     }
     REQUIRE(next_in == next_out);
     REQUIRE(q.rejected == 0U);
+
+    /* A deliberately different model: shift a small array, no ring indices.
+     * Fixed seed makes mixed full/empty/interleaving failures reproducible.
+     * Synthetic data only; neither scheduling nor ISR concurrency is modeled.
+     */
+    stream_record_t model[RECORD_QUEUE_CAPACITY];
+    size_t model_count = 0U;
+    uint32_t model_rejected = 0U;
+    uint32_t random_state = 0xB10E1234U;
+    for (uint32_t step = 0U; step < 4096U; ++step) {
+        random_state = random_state * 1664525U + 1013904223U;
+        if ((random_state >> 30) != 0U) {
+            stream_record_t in = sample(step);
+            in.t_ms = random_state;
+            bool expected = model_count < RECORD_QUEUE_CAPACITY;
+            REQUIRE(record_queue_push(&q, &in) == expected);
+            if (expected) {
+                model[model_count++] = in;
+            } else {
+                ++model_rejected;
+            }
+        } else {
+            stream_record_t out = sample(0xDEADBEEFU);
+            stream_record_t expected = model_count > 0U ? model[0] : out;
+            REQUIRE(record_queue_pop(&q, &out) == (model_count > 0U));
+            REQUIRE(same_record(&out, &expected));
+            if (model_count > 0U) {
+                --model_count;
+                for (size_t i = 0U; i < model_count; ++i) model[i] = model[i + 1U];
+            }
+        }
+        REQUIRE(q.head < RECORD_QUEUE_CAPACITY && q.tail < RECORD_QUEUE_CAPACITY);
+        REQUIRE(q.count == model_count && q.rejected == model_rejected);
+    }
+    while (model_count > 0U) {
+        stream_record_t out = {0};
+        REQUIRE(record_queue_pop(&q, &out));
+        REQUIRE(same_record(&out, &model[0]));
+        --model_count;
+        for (size_t i = 0U; i < model_count; ++i) model[i] = model[i + 1U];
+    }
+    REQUIRE(q.count == 0U);
     return 0;
 }
 
@@ -143,6 +203,9 @@ static int test_csv_limits(void)
     REQUIRE(guarded.data[0] == '\0');
     REQUIRE(guarded.before == 0x5AU && guarded.after == 0xA5U);
     REQUIRE(stream_format_csv(NULL, 0U, &in) == 0U);
+    char zero_capacity = 'z';
+    REQUIRE(stream_format_csv(&zero_capacity, 0U, &in) == 0U);
+    REQUIRE(zero_capacity == 'z');
     char one = 'x';
     REQUIRE(stream_format_csv(&one, 1U, &in) == 0U);
     REQUIRE(one == '\0');
@@ -157,6 +220,16 @@ static int test_csv_limits(void)
     char short_by_one[111];
     REQUIRE(stream_format_csv(short_by_one, sizeof short_by_one, &maximum) == 0U);
     REQUIRE(short_by_one[0] == '\0');
+    /* All insufficient capacities, not just one selected short buffer. */
+    for (size_t cap = 1U; cap < sizeof big; ++cap) {
+        unsigned char guarded_output[114];
+        memset(guarded_output, 0xA5, sizeof guarded_output);
+        REQUIRE(stream_format_csv((char *)&guarded_output[1], cap, &maximum) == 0U);
+        REQUIRE(guarded_output[0] == 0xA5U && guarded_output[1] == 0U);
+        for (size_t i = cap + 1U; i < sizeof guarded_output; ++i) {
+            REQUIRE(guarded_output[i] == 0xA5U);
+        }
+    }
     return 0;
 }
 

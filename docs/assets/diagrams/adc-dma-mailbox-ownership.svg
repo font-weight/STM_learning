@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="940" viewBox="0 0 1200 940" role="img" aria-labelledby="title desc" lang="ru">
+<title id="title">От ADC до UART: владение памятью и отдельные причины потерь</title><desc id="desc">Учебный поток L08 и L10. TIM3 TRGO запускает ADC1 с номинальным темпом 1000 отсчётов в секунду. DMA1 Channel 1 циклически пишет 200 значений uint16_t, две половины по 100. ISR копирует завершённую половину в отдельный однослотовый mailbox только если он свободен; занятой mailbox сохраняется, новый блок отвергается, mailbox_drops растёт с насыщением на UINT32_MAX. Задержка IRQ плюс копирование должны уложиться в срок до повторного использования половины, около 100 мс, с запасом. DMA не останавливается при запрете IRQ. В main из mailbox вычисляется скалярная сводка min, max, mean_x100 с seq и t_ms; ready очищается только после чтения. Только main обслуживает очередь восьми сводок. При переполнении отклоняется новая сводка и растёт dropped_tx с насыщением на UINT32_MAX. Отдельный pending сохраняется до принятия единственным владельцем UART TX; активный TX-буфер живёт до completion/error. DMA deadline fault и ADC error являются авариями, а не известным точным числом потерянных отсчётов. Sequence gaps нельзя прибавлять к счётчикам, которые описывают те же потери.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8.7" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9 Z" fill="#435C69"/></marker></defs>
+<rect width="1200" height="940" fill="#FCFDFE"/>
+<text x="40" y="47" font-family="DejaVu Sans, sans-serif" font-size="30" font-weight="700" text-anchor="start" fill="#183443">От DMA к UART: у каждого буфера свой владелец</text>
+<text x="40" y="81" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#435C69">L08 → L10 · две сырые половины, один mailbox, очередь только готовых сводок</text>
+<text x="40" y="128" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="700" text-anchor="start" fill="#285A80">АППАРАТУРА</text>
+<text x="805" y="128" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="700" text-anchor="start" fill="#59427D">ISR: ОГРАНИЧЕННАЯ РАБОТА</text>
+<rect x="40" y="150" width="250" height="218" rx="12" fill="#EDF4FA" stroke="#285A80" stroke-width="1.6"/>
+<text x="60" y="185" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="start" fill="#285A80">1  TIM3 → ADC1</text>
+<text x="60" y="224" font-family="DejaVu Sans, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#183443">TRGO: 1000 Гц</text>
+<text x="60" y="262" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="400" text-anchor="start" fill="#183443">Один rank</text>
+<text x="60" y="295" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="400" text-anchor="start" fill="#183443">Один trigger</text>
+<text x="60" y="325" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="400" text-anchor="start" fill="#183443">→ один отсчёт</text>
+<text x="60" y="352" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="start" fill="#435C69">Номинально 1000/с</text>
+<path d="M 292 257 H 325" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="335" y="150" width="405" height="218" rx="12" fill="#EDF4FA" stroke="#285A80" stroke-width="1.6"/>
+<text x="355" y="185" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="start" fill="#285A80">2  DMA1 Channel 1</text>
+<text x="355" y="218" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#183443">adc_dma[200] · uint16_t</text>
+<rect x="355" y="238" width="170" height="71" rx="6" fill="#FFFFFF" stroke="#285A80" stroke-width="1.6"/>
+<rect x="545" y="238" width="175" height="71" rx="6" fill="#FFFFFF" stroke="#285A80" stroke-width="1.6"/>
+<text x="440" y="266" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="700" text-anchor="middle" fill="#285A80">H0: 0…99</text>
+<text x="440" y="295" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="middle" fill="#435C69">100 отсчётов</text>
+<text x="632" y="266" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="700" text-anchor="middle" fill="#285A80">H1: 100…199</text>
+<text x="632" y="295" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="middle" fill="#435C69">100 отсчётов</text>
+<text x="355" y="345" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#435C69">Владелец: DMA. Пишет по кругу.</text>
+<path d="M 742 257 H 798" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="771" y="235" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#59427D">копия</text>
+<rect x="805" y="150" width="355" height="340" rx="12" fill="#F2EDF8" stroke="#59427D" stroke-width="1.6"/>
+<text x="825" y="185" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="start" fill="#59427D">3  ISR → mailbox[100]</text>
+<text x="825" y="224" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#183443">Копия готовой половины</text>
+<text x="825" y="259" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#183443">seq, t_ms; затем ready=1</text>
+<text x="825" y="294" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="700" text-anchor="start" fill="#183443">Занятый mailbox</text>
+<text x="825" y="326" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="400" text-anchor="start" fill="#183443">ISR не изменяет.</text>
+<path d="M 825 347 H 1140" fill="none" stroke="#BBCBD5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="825" y="378" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="700" text-anchor="start" fill="#91421E">Занят → drop newest</text>
+<text x="825" y="411" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="start" fill="#91421E">mailbox_drops ↑</text>
+<text x="825" y="440" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="start" fill="#91421E">насыщение UINT32_MAX</text>
+<text x="825" y="471" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#435C69">В CSV: dropped_adc</text>
+<rect x="40" y="389" width="700" height="113" rx="12" fill="#F5F8FA" stroke="#BBCBD5" stroke-width="1.6"/>
+<text x="60" y="422" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="700" text-anchor="start" fill="#183443">До перезаписи завершённой половины ≈100 мс.</text>
+<text x="60" y="454" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#183443">В этот срок: задержка IRQ + копирование, с запасом.</text>
+<text x="60" y="486" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="700" text-anchor="start" fill="#91421E">Запрет IRQ не останавливает DMA.</text>
+<path d="M 982 490 V 554" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="815" y="535" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="start" fill="#435C69">до 10 сводок/с</text>
+<text x="40" y="535" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="700" text-anchor="start" fill="#006958">MAIN: СВОДКА, ОЧЕРЕДЬ И ЕДИНЫЙ ВЛАДЕЛЕЦ TX</text>
+<rect x="805" y="563" width="355" height="230" rx="12" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="825" y="600" font-family="DejaVu Sans, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#006958">4  main: сводка</text>
+<text x="825" y="638" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#183443">Читает mailbox до конца.</text>
+<text x="825" y="672" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="700" text-anchor="start" fill="#183443">min, max, mean_x100</text>
+<text x="825" y="706" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#183443">Скалярный снимок; seq, t_ms</text>
+<text x="825" y="748" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="700" text-anchor="start" fill="#006958">Только затем ready=0.</text>
+<path d="M 798 666 H 748" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="410" y="563" width="330" height="230" rx="12" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="430" y="600" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="start" fill="#006958">5  Очередь сводок</text>
+<text x="430" y="638" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="start" fill="#183443">8 записей · FIFO</text>
+<text x="430" y="671" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#183443">push / pop только в main</text>
+<path d="M 430 692 H 720" fill="none" stroke="#BBCBD5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="430" y="724" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="700" text-anchor="start" fill="#91421E">Полна → drop newest</text>
+<text x="430" y="751" font-family="DejaVu Sans, sans-serif" font-size="23" font-weight="700" text-anchor="start" fill="#91421E">dropped_tx ↑</text>
+<text x="430" y="778" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="start" fill="#91421E">насыщение UINT32_MAX</text>
+<path d="M 403 666 H 350" fill="none" stroke="#435C69" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="40" y="563" width="305" height="230" rx="12" fill="#EAF5F0" stroke="#006958" stroke-width="1.6"/>
+<text x="60" y="600" font-family="DejaVu Sans, sans-serif" font-size="24" font-weight="700" text-anchor="start" fill="#006958">6  UART TX</text>
+<text x="60" y="638" font-family="DejaVu Sans, sans-serif" font-size="22" font-weight="700" text-anchor="start" fill="#183443">pending → TX-буфер</text>
+<text x="60" y="671" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#183443">Один владелец передачи.</text>
+<text x="60" y="705" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#183443">Активный буфер живёт</text>
+<text x="60" y="737" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="400" text-anchor="start" fill="#183443">до completion/error.</text>
+<text x="60" y="764" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="400" text-anchor="start" fill="#435C69">Принят TX ≠ получен ПК.</text>
+<rect x="40" y="810" width="1120" height="91" rx="12" fill="#FFF1E8" stroke="#DABEA9" stroke-width="1.6"/>
+<text x="60" y="844" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="700" text-anchor="start" fill="#91421E">dma_deadline_faults / adc_errors → fault: нормальные измерения прекращаются.</text>
+<text x="60" y="879" font-family="DejaVu Sans, sans-serif" font-size="21" font-weight="400" text-anchor="start" fill="#435C69">seq считает обслуженные callbacks; gap не прибавляют к потерям тех же блоков.</text>
+<text x="40" y="927" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="400" text-anchor="start" fill="#435C69">Схема требует временных границ L08. Проверки CNDTR не восстанавливают пропущенные обороты DMA.</text>
+</svg>
